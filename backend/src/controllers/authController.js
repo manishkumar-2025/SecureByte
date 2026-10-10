@@ -1,0 +1,275 @@
+const crypto = require('crypto');
+const { env } = require('../config/env');
+const { prisma } = require('../lib/prisma');
+const { signToken } = require('../utils/jwt');
+const { hashPassword, verifyPassword } = require('../utils/password');
+const { unauthorized, conflict, forbidden, unprocessable, locked } = require('../utils/errors');
+const { readPrefs } = require('../lib/notify');
+
+function safeUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    createdAt: user.createdAt,
+    // Prefs ride along with the profile so the app can render toggle
+    // states without an extra round-trip.
+    notificationPrefs: readPrefs(user),
+  };
+}
+
+/** Constant-time string comparison to avoid leaking the setup code via timing. */
+function safeEqual(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+// ── Refresh token helpers ─────────────────────────────────────
+// The raw token is ONLY shown to the client once; the database stores a
+// SHA-256 hash, so a stolen database dump cannot be replayed as sessions.
+
+function hashRefreshToken(raw) {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+async function issueRefreshToken(userId) {
+  const raw = crypto.randomBytes(48).toString('hex');
+  const expiresAt = new Date(Date.now() + env.refreshTokenDays * 24 * 60 * 60 * 1000);
+  await prisma.refreshToken.create({
+    data: { userId, tokenHash: hashRefreshToken(raw), expiresAt },
+  });
+  return raw;
+}
+
+/**
+ * Validates a refresh token and ROTATES it: the presented token is revoked
+ * and a fresh one is issued. Reuse of a revoked token is rejected, which
+ * limits the damage of a leaked token window.
+ */
+async function rotateRefreshToken(raw) {
+  if (typeof raw !== 'string' || raw.length < 32) {
+    throw unauthorized('Invalid refresh token.', 'INVALID_REFRESH_TOKEN');
+  }
+  const record = await prisma.refreshToken.findUnique({
+    where: { tokenHash: hashRefreshToken(raw) },
+    include: { user: true },
+  });
+
+  if (!record || record.revokedAt || record.expiresAt < new Date()) {
+    throw unauthorized('Refresh token is invalid or has expired. Please sign in again.', 'INVALID_REFRESH_TOKEN');
+  }
+  if (!record.user) {
+    throw unauthorized('This account no longer exists.', 'USER_NOT_FOUND');
+  }
+
+  const nextRaw = crypto.randomBytes(48).toString('hex');
+  const expiresAt = new Date(Date.now() + env.refreshTokenDays * 24 * 60 * 60 * 1000);
+
+  await prisma.$transaction([
+    prisma.refreshToken.update({ where: { id: record.id }, data: { revokedAt: new Date() } }),
+    prisma.refreshToken.create({
+      data: { userId: record.userId, tokenHash: hashRefreshToken(nextRaw), expiresAt },
+    }),
+  ]);
+
+  return { user: record.user, refreshToken: nextRaw };
+}
+
+// POST /api/auth/register — public. ALWAYS creates a STUDENT account;
+// the role field is hardcoded server-side, so a client cannot register
+// as a responder.
+async function register(req, res, next) {
+  try {
+    const { name, email, password } = req.validated;
+
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      throw conflict('An account with this email already exists. Try signing in instead.', 'EMAIL_IN_USE');
+    }
+
+    const passwordHash = await hashPassword(password);
+    const user = await prisma.user.create({
+      data: { name, email, passwordHash, role: 'STUDENT' },
+    });
+
+    const accessToken = signToken(user);
+    const refreshToken = await issueRefreshToken(user.id);
+    res.status(201).json({ success: true, data: { user: safeUser(user), accessToken, refreshToken } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/login — public. Returns the SAME generic error for
+// "unknown email" and "wrong password" so attackers cannot probe which
+// emails are registered (no user enumeration).
+//
+// Account lockout: after LOGIN_MAX_FAILED consecutive failures the account
+// is locked for LOCKOUT_MINUTES — independent of the IP-based rate limiter.
+async function login(req, res, next) {
+  try {
+    const { email, password } = req.validated;
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (user && user.lockedUntil && user.lockedUntil > new Date()) {
+      const minutes = Math.max(1, Math.ceil((user.lockedUntil - Date.now()) / 60000));
+      throw locked(
+        `Too many failed sign-in attempts. This account is locked for about ${minutes} more minute(s).`,
+        'ACCOUNT_LOCKED'
+      );
+    }
+
+    const ok = user ? await verifyPassword(password, user.passwordHash) : false;
+    if (!ok) {
+      if (user) {
+        const failedLoginCount = user.failedLoginCount + 1;
+        const shouldLock = failedLoginCount >= env.loginMaxFailed;
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            failedLoginCount,
+            ...(shouldLock ? { lockedUntil: new Date(Date.now() + env.lockoutMinutes * 60 * 1000) } : {}),
+          },
+        });
+      }
+      throw unauthorized('Invalid email or password.', 'INVALID_CREDENTIALS');
+    }
+
+    if (user.failedLoginCount > 0 || user.lockedUntil) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginCount: 0, lockedUntil: null },
+      });
+    }
+
+    const accessToken = signToken(user);
+    const refreshToken = await issueRefreshToken(user.id);
+    res.status(200).json({ success: true, data: { user: safeUser(user), accessToken, refreshToken } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/refresh — public (the refresh token IS the credential).
+// Exchanges a valid refresh token for a NEW access token + NEW refresh
+// token (rotation). Lets the mobile app stay signed in silently without
+// ever storing a long-lived password-derived credential.
+async function refresh(req, res, next) {
+  try {
+    const { refreshToken } = req.body || {};
+    const { user, refreshToken: nextRefreshToken } = await rotateRefreshToken(refreshToken);
+    res.status(200).json({
+      success: true,
+      data: { user: safeUser(user), accessToken: signToken(user), refreshToken: nextRefreshToken },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/logout — revokes the presented refresh token so it can no
+// longer be exchanged. Idempotent: unknown/expired tokens still return 200.
+async function logout(req, res, next) {
+  try {
+    const raw = (req.body && req.body.refreshToken) || '';
+    if (typeof raw === 'string' && raw.length >= 32) {
+      await prisma.refreshToken.updateMany({
+        where: { tokenHash: hashRefreshToken(raw), revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+    res.status(200).json({ success: true, data: { message: 'Signed out.' } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/auth/password — authenticated. Verifies the current password,
+// then rotates the stored hash and revokes ALL refresh tokens of the user
+// (every device must sign in again with the new password; the caller's
+// short-lived access token keeps working until it expires).
+async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = req.validated;
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) throw unauthorized('This account no longer exists.', 'USER_NOT_FOUND');
+
+    const ok = await verifyPassword(currentPassword, user.passwordHash);
+    if (!ok) {
+      throw unprocessable('Your current password is incorrect.', 'INVALID_CURRENT_PASSWORD');
+    }
+    if (await verifyPassword(newPassword, user.passwordHash)) {
+      throw unprocessable('The new password must be different from the current one.', 'PASSWORD_UNCHANGED');
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: { message: 'Password changed. Other devices have been signed out.' },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/auth/me — authenticated. Returns the DB record of the token
+// owner (fresh role, fresh everything).
+async function me(req, res, next) {
+  try {
+    res.status(200).json({ success: true, data: { user: safeUser(req.user) } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/setup-responder — CONTROLLED responder provisioning for
+// the demo/ops team. Disabled unless RESPONDER_SETUP_CODE is configured,
+// and protected by a shared secret code. Public responder registration
+// is intentionally NOT offered.
+async function setupResponder(req, res, next) {
+  try {
+    if (!env.responderSetupCode) {
+      throw forbidden('Responder setup is disabled on this server.', 'SETUP_DISABLED');
+    }
+
+    const provided = (req.body && (req.body.setupCode || req.headers['x-responder-setup-code'])) || '';
+    if (!provided || !safeEqual(provided, env.responderSetupCode)) {
+      throw forbidden('Invalid responder setup code.', 'INVALID_SETUP_CODE');
+    }
+
+    const { name, email, password } = req.validated;
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      throw conflict('An account with this email already exists.', 'EMAIL_IN_USE');
+    }
+
+    const passwordHash = await hashPassword(password);
+    const user = await prisma.user.create({
+      data: { name, email, passwordHash, role: 'RESPONDER' },
+    });
+
+    const accessToken = signToken(user);
+    const refreshToken = await issueRefreshToken(user.id);
+    res.status(201).json({ success: true, data: { user: safeUser(user), accessToken, refreshToken } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  register,
+  login,
+  refresh,
+  logout,
+  changePassword,
+  me,
+  setupResponder,
+};

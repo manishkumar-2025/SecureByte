@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecureByte — Emergency Command Center & Safety Portal</title>
+  <meta name="description" content="Campus emergency alerts, real-time incident triage, live safety map, and student safety portal.">
+  <link rel="stylesheet" href="app.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+</head>
+<body data-theme="dark">
+  <div id="strobeOverlay" class="strobe-overlay hidden"></div>
+
+  <!-- Top Glassmorphism Navigation -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-badge">
+        <span class="shield-icon">🛡️</span>
+        <div class="brand-text">
+          <span class="brand-name">SecureByte</span>
+          <span class="brand-sub">Command Center & Safety Portal</span>
+        </div>
+      </div>
+      <div class="system-status-pill" id="systemStatusPill">
+        <span class="status-dot pulse"></span>
+        <span id="systemStatusText">Connecting to API…</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <!-- Active Role / Session Indicator -->
+      <div id="userProfileChip" class="profile-chip hidden">
+        <span id="userRoleBadge" class="badge">ROLE</span>
+        <span id="userNameDisplay" class="user-name">User</span>
+        <button id="logoutBtn" class="btn-ghost-sm" title="Sign Out">Sign out</button>
+      </div>
+
+      <!-- Theme Switcher -->
+      <button id="themeToggleBtn" class="theme-btn" aria-label="Toggle Theme" title="Toggle Light/Dark Theme">
+        <span class="theme-icon">🌙</span>
+      </button>
+
+      <!-- Night Walk Escort Quick Action -->
+      <button id="escortQuickBtn" class="btn-escort" title="Night Walk Safety Escort">
+        🚶 <span>Safety Escort</span>
+      </button>
+
+      <!-- Panic Siren Alarm -->
+      <button id="sirenBtn" class="btn-siren" title="Audible Campus Siren & Distress Flash">
+        🚨 <span id="sirenBtnText">Siren</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Multi-Panel Container -->
+  <main class="main-container">
+    
+    <!-- Left Navigation Sidebar -->
+    <aside class="sidebar">
+      <nav class="nav-menu">
+        <button class="nav-item active" data-tab="dispatchTab">
+          <span class="nav-icon">🚨</span>
+          <span class="nav-label">Live Dispatch</span>
+          <span id="sosBadgeCount" class="nav-badge danger-badge hidden">0</span>
+        </button>
+        <button class="nav-item" data-tab="mapTab">
+          <span class="nav-icon">🗺️</span>
+          <span class="nav-label">Safety Map</span>
+        </button>
+        <button class="nav-item" data-tab="studentTab">
+          <span class="nav-icon">📱</span>
+          <span class="nav-label">Student Portal</span>
+        </button>
+        <button class="nav-item" data-tab="escortTab">
+          <span class="nav-icon">🚶</span>
+          <span class="nav-label">Virtual Escort</span>
+          <span id="escortActiveDot" class="nav-dot hidden"></span>
+        </button>
+        <button class="nav-item" data-tab="analyticsTab">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">Analytics</span>
+        </button>
+        <button class="nav-item" data-tab="announcementsTab">
+          <span class="nav-icon">📢</span>
+          <span class="nav-label">Broadcasts</span>
+        </button>
+      </nav>
+
+      <!-- Quick Demo Account Fill Section -->
+      <div class="demo-switch-box">
+        <div class="demo-title">⚡ Quick Sign-In</div>
+        <div class="demo-buttons">
+          <button class="demo-chip student-chip" onclick="quickLogin('student@securebyte.dev', 'Student@123')">
+            🎓 Student
+          </button>
+          <button class="demo-chip responder-chip" onclick="quickLogin('responder@securebyte.dev', 'Responder@123')">
+            🚨 Responder
+          </button>
+          <button class="demo-chip admin-chip" onclick="quickLogin('admin@securebyte.dev', 'Admin@12345')">
+            🛡️ Admin
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <section class="viewport">
+
+      <!-- TAB 1: LIVE DISPATCH & QUEUE -->
+      <div id="dispatchTab" class="tab-pane active">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Campus Emergency Dispatch & Queue</h1>
+            <p class="pane-subtitle">Prioritized incident queue: Emergency SOS alerts first, followed by live categorized campus reports.</p>
+          </div>
+          <div class="pane-actions">
+            <button id="refreshQueueBtn" class="btn-secondary">🔄 Refresh Queue</button>
+          </div>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="toolbar-card">
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="incidentSearchInput" placeholder="Search incidents, landmarks, buildings, or reporters…" autocomplete="off">
+          </div>
+          <div class="filter-group">
+            <select id="statusFilterSelect" class="filter-select">
+              <option value="">All Statuses</option>
+              <option value="NEW">New (Unassigned)</option>
+              <option value="ACKNOWLEDGED">Acknowledged</option>
+              <option value="IN_PROGRESS">In Progress</option>
+              <option value="RESOLVED">Resolved</option>
+            </select>
+
+            <select id="priorityFilterSelect" class="filter-select">
+              <option value="">All Priorities</option>
+              <option value="CRITICAL">Critical</option>
+              <option value="HIGH">High</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="LOW">Low</option>
+            </select>
+
+            <select id="categoryFilterSelect" class="filter-select">
+              <option value="">All Categories</option>
+              <option value="SOS_ALERT">🚨 Emergency SOS</option>
+              <option value="MEDICAL_EMERGENCY">🚑 Medical Emergency</option>
+              <option value="FIRE_HAZARD">🔥 Fire Hazard</option>
+              <option value="SECURITY_THREAT">⚠️ Security Threat</option>
+              <option value="HARASSMENT">🛡️ Harassment</option>
+              <option value="FACILITY_CONCERN">🛠️ Facility Concern</option>
+              <option value="OTHER">📌 Other</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Incident Cards Grid / List -->
+        <div id="incidentListContainer" class="incident-grid">
+          <div class="loading-spinner-wrap">
+            <div class="spinner"></div>
+            <span>Loading live campus incidents…</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: SAFETY MAP -->
+      <div id="mapTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Campus Safety & Resource Map</h1>
+            <p class="pane-subtitle">Geolocated emergency stations, AEDs, security checkpoints, and emergency exits across campus.</p>
+          </div>
+          <div class="map-category-chips" id="mapCategoryChips">
+            <button class="chip active" data-category="">All Resources</button>
+            <button class="chip" data-category="SECURITY_OFFICE">👮 Security</button>
+            <button class="chip" data-category="AED">❤️ AED</button>
+            <button class="chip" data-category="FIRST_AID">⛑️ First Aid</button>
+            <button class="chip" data-category="FIRE_EXTINGUISHER">🧯 Fire Extinguisher</button>
+            <button class="chip" data-category="EMERGENCY_EXIT">🚪 Emergency Exit</button>
+            <button class="chip" data-category="SHELTER">🏠 Shelter</button>
+          </div>
+        </div>
+
+        <div class="map-layout">
+          <!-- Interactive Schematic Map Canvas -->
+          <div class="map-canvas-card">
+            <div class="map-grid-overlay"></div>
+            <div id="mapMarkersLayer" class="map-markers-layer"></div>
+            <div class="map-legend">
+              <span>🔵 Security</span>
+              <span>🔴 AED / Fire</span>
+              <span>🟢 First Aid / Exit</span>
+              <span>🟣 Shelter</span>
+              <span>🚨 Active Incident</span>
+            </div>
+          </div>
+
+          <!-- Selected Resource Sidebar Details -->
+          <div class="map-sidebar-card">
+            <h3 class="sidebar-card-title">Campus Safety Points</h3>
+            <div id="safetyPointsList" class="safety-points-scroll">
+              <div class="empty-state-card">Select a pin on the map or click a resource below.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: STUDENT SIMULATION PORTAL -->
+      <div id="studentTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Student Safety & SOS Portal</h1>
+            <p class="pane-subtitle">Trigger simulated emergency SOS with 3-second abort window, file categorized incident reports, or record safety check-ins.</p>
+          </div>
+        </div>
+
+        <div class="student-portal-grid">
+          <!-- Big Red SOS Card -->
+          <div class="sos-card">
+            <div class="sos-halo"></div>
+            <h2 class="sos-title">Emergency SOS Alert</h2>
+            <p class="sos-desc">Pressing this button activates a 3-second tactile countdown to alert all campus security staff with your current GPS location.</p>
+            
+            <div id="sosCountdownArea" class="sos-countdown-wrap hidden">
+              <div class="countdown-circle" id="countdownNumber">3</div>
+              <div class="countdown-label">HOLD ON — DISPATCHING ALERT…</div>
+              <button id="cancelSosBtn" class="btn-cancel-sos">❌ CANCEL SOS</button>
+            </div>
+
+            <button id="triggerSosBtn" class="btn-trigger-sos">
+              <span class="sos-btn-text">SOS</span>
+              <span class="sos-btn-sub">HOLD / PRESS TO ACTIVATE</span>
+            </button>
+
+            <div class="sos-landmark-fallback">
+              <label for="manualLandmarkInput">Campus Landmark Fallback (if GPS denied):</label>
+              <input type="text" id="manualLandmarkInput" placeholder="e.g. Science Library, 2nd Floor Staircase" value="Central Quad & Main Library">
+            </div>
+          </div>
+
+          <!-- Report Filing Form Card -->
+          <div class="report-form-card">
+            <h2 class="card-title">📝 File Campus Safety Report</h2>
+            <form id="newIncidentForm" class="form-vertical">
+              <div class="form-group">
+                <label for="incidentTitle">Incident Title (5–120 characters)</label>
+                <input type="text" id="incidentTitle" required minlength="5" maxlength="120" placeholder="e.g. Broken glass on walk path near Hostel 3">
+              </div>
+
+              <div class="form-row">
+                <div class="form-group half">
+                  <label for="incidentCategory">Category</label>
+                  <select id="incidentCategory" required>
+                    <option value="FACILITY_CONCERN">🛠️ Facility Concern</option>
+                    <option value="MEDICAL_EMERGENCY">🚑 Medical Emergency</option>
+                    <option value="FIRE_HAZARD">🔥 Fire Hazard</option>
+                    <option value="SECURITY_THREAT">⚠️ Security Threat</option>
+                    <option value="HARASSMENT">🛡️ Harassment</option>
+                    <option value="OTHER">📌 Other Concern</option>
+                  </select>
+                </div>
+
+                <div class="form-group half">
+                  <label for="incidentPriority">Priority</label>
+                  <select id="incidentPriority" required>
+                    <option value="MEDIUM" selected>🟡 Medium</option>
+                    <option value="LOW">🟢 Low</option>
+                    <option value="HIGH">🔴 High</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="incidentDesc">Detailed Description (10–2000 characters)</label>
+                <textarea id="incidentDesc" rows="3" required minlength="10" maxlength="2000" placeholder="Provide accurate details of what happened, current hazard level, and exact location…"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label for="incidentLandmark">Campus Location / Room</label>
+                <input type="text" id="incidentLandmark" placeholder="e.g. Lecture Hall B, Room 204">
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" id="submitReportBtn" class="btn-primary">Submit Safety Report</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Safety Check-In Card -->
+          <div class="checkin-card">
+            <h2 class="card-title">🟢 Safety Check-in</h2>
+            <p class="card-desc">Check in during campus incidents or late hours so security and emergency contacts know your status.</p>
+            <div class="checkin-buttons">
+              <button id="checkinSafeBtn" class="btn-checkin-safe">
+                <span>✅ I AM SAFE</span>
+                <small>Record safe status</small>
+              </button>
+              <button id="checkinHelpBtn" class="btn-checkin-help">
+                <span>🆘 I NEED HELP</span>
+                <small>Alert security immediately</small>
+              </button>
+            </div>
+            <div id="myRecentCheckin" class="recent-checkin-pill">No recent check-in</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: VIRTUAL SAFETY ESCORT / NIGHT WALK (NEW FEATURE) -->
+      <div id="escortTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Virtual Campus Escort & Night Walk Timer</h1>
+            <p class="pane-subtitle">Walking across campus at night? Start a safety timer. If you don't check in before it expires, security is immediately dispatched to your route!</p>
+          </div>
+        </div>
+
+        <div class="escort-layout">
+          <div class="escort-setup-card" id="escortSetupView">
+            <h2>🚶 Configure Night Walk</h2>
+            <p>Set your destination and estimated travel time. We'll hold a standby check-in for you.</p>
+
+            <div class="form-group">
+              <label for="escortOrigin">Starting From</label>
+              <input type="text" id="escortOrigin" value="Central Library (Ground Floor)" placeholder="e.g. Science Complex">
+            </div>
+
+            <div class="form-group">
+              <label for="escortDestination">Destination</label>
+              <input type="text" id="escortDestination" value="Hostel Block C, Room 312" placeholder="e.g. East Campus Dorms">
+            </div>
+
+            <div class="form-group">
+              <label>Estimated Walking Duration</label>
+              <div class="duration-chips">
+                <button class="duration-btn active" data-mins="5">5 mins</button>
+                <button class="duration-btn" data-mins="10">10 mins</button>
+                <button class="duration-btn" data-mins="15">15 mins</button>
+                <button class="duration-btn" data-mins="20">20 mins</button>
+              </div>
+            </div>
+
+            <button id="startEscortBtn" class="btn-primary-lg">Start Virtual Escort Walk</button>
+          </div>
+
+          <div class="escort-active-card hidden" id="escortActiveView">
+            <div class="escort-timer-ring">
+              <div class="escort-time-left" id="escortTimeDisplay">05:00</div>
+              <div class="escort-timer-sub">UNTIL SAFETY CHECK-IN</div>
+            </div>
+
+            <div class="escort-route-badge">
+              <span id="escortRouteText">Central Library → Hostel Block C</span>
+            </div>
+
+            <p class="escort-notice">Security officers are monitoring this session. When you arrive safely, tap below.</p>
+
+            <div class="escort-actions">
+              <button id="arrivedSafeBtn" class="btn-arrived-safe">✅ I Have Arrived Safely</button>
+              <button id="escortEmergencyBtn" class="btn-escort-emergency">🚨 Emergency: Alert Now</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 5: ANALYTICS -->
+      <div id="analyticsTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Campus Safety Intelligence & Metrics</h1>
+            <p class="pane-subtitle">Aggregated incident metrics, 7-day trend analysis, and resolution velocity computed from live database records.</p>
+          </div>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-icon">📊</div>
+            <div class="metric-val" id="metricTotalIncidents">-</div>
+            <div class="metric-label">Total Campus Incidents</div>
+          </div>
+          <div class="metric-card danger">
+            <div class="metric-icon">🚨</div>
+            <div class="metric-val" id="metricSos24h">-</div>
+            <div class="metric-label">SOS Alerts (Last 24h)</div>
+          </div>
+          <div class="metric-card warning">
+            <div class="metric-icon">⏳</div>
+            <div class="metric-val" id="metricOpenNow">-</div>
+            <div class="metric-label">Active / Open Incidents</div>
+          </div>
+          <div class="metric-card success">
+            <div class="metric-icon">⏱️</div>
+            <div class="metric-val" id="metricAvgResTime">-</div>
+            <div class="metric-label">Avg. Resolution Time</div>
+          </div>
+        </div>
+
+        <div class="analytics-detail-grid">
+          <div class="analytics-chart-card">
+            <h3>7-Day Incident Trend</h3>
+            <div id="trendChartContainer" class="bar-chart-container"></div>
+          </div>
+          <div class="analytics-chart-card">
+            <h3>Incidents by Category</h3>
+            <div id="categoryBreakdownContainer" class="breakdown-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 6: BROADCASTS & ANNOUNCEMENTS -->
+      <div id="announcementsTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Campus Safety Broadcasts</h1>
+            <p class="pane-subtitle">Campus-wide safety alerts, emergency notifications, and operational directives.</p>
+          </div>
+          <button id="openAnnouncementModalBtn" class="btn-primary">➕ Publish Announcement</button>
+        </div>
+
+        <div id="announcementsList" class="announcements-grid">
+          <div class="loading-spinner-wrap"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Incident Detail & Status Transition Modal -->
+  <div id="incidentModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span id="modalPriorityBadge" class="badge">PRIORITY</span>
+          <h2 id="modalIncidentTitle" class="modal-title">Incident Details</h2>
+        </div>
+        <button id="closeModalBtn" class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-info-row">
+          <div><strong>Category:</strong> <span id="modalCategory">-</span></div>
+          <div><strong>Reported By:</strong> <span id="modalReporter">-</span></div>
+          <div><strong>Time:</strong> <span id="modalTime">-</span></div>
+        </div>
+
+        <div class="modal-location-box" id="modalLocationBox">
+          <strong>📍 Location:</strong> <span id="modalLocationText">No coordinates attached</span>
+          <a id="modalGoogleMapsLink" href="#" target="_blank" class="maps-link hidden">Open in Google Maps ↗</a>
+        </div>
+
+        <div class="modal-desc-box">
+          <h4>Description</h4>
+          <p id="modalDescription">-</p>
+        </div>
+
+        <div id="modalPhotoContainer" class="modal-photo-wrap hidden">
+          <h4>Attached Photo Evidence</h4>
+          <img id="modalPhotoImage" src="" alt="Evidence photo" class="evidence-img">
+        </div>
+
+        <!-- Responder Action Controls -->
+        <div id="responderActionBlock" class="responder-actions-block">
+          <h4>Update Status (Staff Action)</h4>
+          <div class="form-group">
+            <label for="statusNotesInput">Responder Notes / Action Taken:</label>
+            <input type="text" id="statusNotesInput" placeholder="e.g. Officer dispatched to Location, perimeter secured">
+          </div>
+          <div class="action-buttons-row">
+            <button id="btnAcknowledge" class="btn-action btn-ack hidden">✓ Acknowledge</button>
+            <button id="btnInProgress" class="btn-action btn-prog hidden">▶ Mark In Progress</button>
+            <button id="btnResolve" class="btn-action btn-res hidden">✔ Mark Resolved</button>
+          </div>
+        </div>
+
+        <!-- Status History Audit Trail -->
+        <div class="status-history-section">
+          <h4>Status History & Audit Trail</h4>
+          <div id="modalTimeline" class="timeline-container"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Announcement Creation Modal -->
+  <div id="announcementModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">📢 New Safety Announcement</h2>
+        <button id="closeAnnouncementModalBtn" class="modal-close">&times;</button>
+      </div>
+      <form id="newAnnouncementForm" class="modal-body">
+        <div class="form-group">
+          <label for="annTitle">Title (5–140 chars)</label>
+          <input type="text" id="annTitle" required minlength="5" maxlength="140" placeholder="e.g. Severe Weather Warning: Strong Winds">
+        </div>
+        <div class="form-group">
+          <label for="annSeverity">Severity</label>
+          <select id="annSeverity">
+            <option value="INFO">ℹ️ INFO (Informational)</option>
+            <option value="WARNING" selected>⚠️ WARNING (Caution required)</option>
+            <option value="CRITICAL">🚨 CRITICAL (Emergency broadcast)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="annMessage">Message (10–2000 chars)</label>
+          <textarea id="annMessage" rows="4" required minlength="10" maxlength="2000" placeholder="State clear instructions for campus students and faculty…"></textarea>
+        </div>
+        <button type="submit" class="btn-primary">Broadcast Announcement</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- In-App Notification Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

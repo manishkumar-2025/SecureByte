@@ -1,0 +1,70 @@
+# ── Secrets & Environment ──────────────────────────────────
+# NEVER commit real credentials, tokens, or database URLs.
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# ── Dependencies ───────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+# ── Database clusters & binary archives ───────────────────
+.pg/
+**/.pg/
+*.zip
+*.tar.gz
+
+# ── Runtime uploads (photo evidence, user data) ───────────
+uploads/
+**/uploads/
+!backend/uploads/.gitkeep
+
+# ── Build & run artifacts ──────────────────────────────────
+.expo/
+**/.expo/
+dist/
+**/dist/
+web-build/
+**/web-build/
+coverage/
+**/coverage/
+.nyc_output/
+*.backup
+*.sdk57-backup
+*.orig
+
+# ── Logs & Debugging ───────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── OS & editor noise ──────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ── Mobile Keystores & Cloud Credentials ───────────────────
+*.jks
+*.keystore
+*.p12
+*.p8
+*.pem
+*.key
+google-services.json
+**/google-services.json
+GoogleService-Info.plist
+**/GoogleService-Info.plist
+
+# ── Native Android & iOS Prebuild Folders ──────────────────
+android/
+**/android/
+ios/
+**/ios/

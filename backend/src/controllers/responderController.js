@@ -29,6 +29,14 @@ async function listIncidents(req, res, next) {
     if (req.query.isSos === 'true' || req.query.isSos === 'false') {
       where.isSos = req.query.isSos === 'true';
     }
+    // Sensitive / Independent Review filtering:
+    // Non-admin RESPONDERS cannot view sensitive or independent reviewer complaints
+    if (req.user.role !== 'ADMIN') {
+      where.independentReviewerOnly = false;
+      where.isSensitive = false;
+    } else if (req.query.isSensitive === 'true' || req.query.isSensitive === 'false') {
+      where.isSensitive = req.query.isSensitive === 'true';
+    }
     if (typeof req.query.q === 'string' && req.query.q.trim() !== '') {
       const q = req.query.q.trim().slice(0, 100);
       where.OR = [
@@ -58,7 +66,7 @@ async function listIncidents(req, res, next) {
 }
 
 /**
- * PATCH /api/responder/incidents/:id/status — RESPONDER only.
+ * PATCH /api/responder/incidents/:id/status — RESPONDER / ADMIN.
  *
  * Runs inside a single database TRANSACTION: the incident status update and
  * the audit-history entry are written together, or not at all. Invalid
@@ -67,11 +75,22 @@ async function listIncidents(req, res, next) {
  */
 async function updateIncidentStatus(req, res, next) {
   try {
-    const { newStatus, responderNotes } = req.validated;
+    const newStatus = req.validated.newStatus || req.validated.status;
+    if (!newStatus) throw unprocessable('Provide newStatus or status.', 'VALIDATION_ERROR');
+    const responderNotes = req.validated.responderNotes;
     const incidentId = req.params.id;
 
     const incident = await prisma.incident.findUnique({ where: { id: incidentId } });
     if (!incident) throw notFound('Incident not found.', 'INCIDENT_NOT_FOUND');
+
+    // Sensitive complaints access guard:
+    if ((incident.isSensitive || incident.independentReviewerOnly) && req.user.role !== 'ADMIN') {
+      const { forbidden } = require('../utils/errors');
+      throw forbidden(
+        'Only authorized independent reviewers (ADMIN) can update confidential reports.',
+        'SENSITIVE_ACCESS_RESTRICTED'
+      );
+    }
 
     const allowed = STATUS_TRANSITIONS[incident.status];
     if (!allowed.includes(newStatus)) {

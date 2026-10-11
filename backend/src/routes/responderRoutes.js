@@ -20,7 +20,8 @@ router.get('/checkins', listStaffCheckIns);
 router.patch(
   '/incidents/:id/status',
   validateBody({
-    newStatus: rules.oneOf({ values: STATUSES, label: 'New status' }),
+    newStatus: rules.optionalOneOf({ values: STATUSES, label: 'New status' }),
+    status: rules.optionalOneOf({ values: STATUSES, label: 'Status' }),
     responderNotes: rules.string({ label: 'Responder notes', min: 1, max: 1000, required: false }),
   }),
   updateIncidentStatus

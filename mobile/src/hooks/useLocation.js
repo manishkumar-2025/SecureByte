@@ -25,10 +25,33 @@ export function useLocation() {
       }
       setStatus('granted');
       try {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const c = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-        setCoords(c);
-        return { status: 'granted', coords: c };
+        // Fast acquire with timeout to never stall emergency or reporting actions
+        const posPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('GPS timeout')), 3500)
+        );
+
+        let pos;
+        try {
+          pos = await Promise.race([posPromise, timeoutPromise]);
+        } catch (tErr) {
+          // Fallback to last known position if real-time fix takes too long
+          pos = await Location.getLastKnownPositionAsync().catch(() => null);
+        }
+
+        if (pos?.coords) {
+          const c = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy ?? null,
+            source: 'GPS',
+          };
+          setCoords(c);
+          return { status: 'granted', coords: c };
+        }
+
+        setError('GPS fix not available. You can select a campus landmark or enter details manually.');
+        return { status: 'error', coords: null };
       } catch (e) {
         setError('Could not read your GPS position. You can continue without it.');
         return { status: 'error', coords: null };

@@ -176,4 +176,117 @@ describe('Incident creation & retrieval', () => {
     expect(missing.status).toBe(404);
     expect(missing.body.error.code).toBe('INCIDENT_NOT_FOUND');
   });
+
+  describe('PATCH /api/incidents/:id (Owner Edit)', () => {
+    test('owner can edit title, description, and category while status is NEW', async () => {
+      const created = await request(app)
+        .post('/api/incidents')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ title: 'Initial Draft Report', description: 'Detailed initial draft report description here.', category: 'OTHER' });
+      const id = created.body.data.incident.id;
+
+      const editRes = await request(app)
+        .patch(`/api/incidents/${id}`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({
+          title: 'Corrected Title Report',
+          description: 'Updated report description with more accurate details.',
+          category: 'FACILITY_CONCERN',
+        });
+
+      expect(editRes.status).toBe(200);
+      expect(editRes.body.success).toBe(true);
+      expect(editRes.body.data.incident.title).toBe('Corrected Title Report');
+      expect(editRes.body.data.incident.description).toBe('Updated report description with more accurate details.');
+      expect(editRes.body.data.incident.category).toBe('FACILITY_CONCERN');
+    });
+
+    test('stranger cannot edit another student incident (403 NOT_YOUR_INCIDENT)', async () => {
+      const created = await request(app)
+        .post('/api/incidents')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ title: 'Student A Report', description: 'Incident filed by Student A for unauthorized edit test.', category: 'OTHER' });
+      const id = created.body.data.incident.id;
+
+      const { token: otherToken } = await registerAndLogin({ name: 'Other Guy', email: 'otherguy@campus.edu', password: 'Passw0rd1' });
+      const editRes = await request(app)
+        .patch(`/api/incidents/${id}`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({ title: 'Hacked Title By Stranger' });
+
+      expect(editRes.status).toBe(403);
+      expect(editRes.body.error.code).toBe('NOT_YOUR_INCIDENT');
+    });
+
+    test('cannot edit emergency SOS alert (422 SOS_EDIT_FORBIDDEN)', async () => {
+      const sosRes = await request(app)
+        .post('/api/incidents')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ isSos: true, location: { latitude: 23.6547, longitude: 86.4737, campusLandmark: 'Main Gate' } });
+      const id = sosRes.body.data.incident.id;
+
+      const editRes = await request(app)
+        .patch(`/api/incidents/${id}`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ title: 'Attempted to edit SOS' });
+
+      expect(editRes.status).toBe(422);
+      expect(editRes.body.error.code).toBe('SOS_EDIT_FORBIDDEN');
+    });
+
+    test('cannot edit after responder acknowledges or updates status (422 INCIDENT_ALREADY_ACKNOWLEDGED)', async () => {
+      const created = await request(app)
+        .post('/api/incidents')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ title: 'Report To Be Acknowledged', description: 'Testing post-acknowledgement immutable rule.', category: 'OTHER' });
+      const id = created.body.data.incident.id;
+
+      // Responder acknowledges
+      const responder = await request(app)
+        .post('/api/auth/setup-responder')
+        .send({ name: 'AckDesk', email: 'ackdesk@campus.edu', password: 'Passw0rd1', setupCode: 'jest-setup-code-99' });
+      await request(app)
+        .patch(`/api/responder/incidents/${id}/status`)
+        .set('Authorization', `Bearer ${responder.body.data.accessToken}`)
+        .send({ newStatus: 'ACKNOWLEDGED' });
+
+      // Owner attempts edit
+      const editRes = await request(app)
+        .patch(`/api/incidents/${id}`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ title: 'Attempt edit acknowledged incident' });
+
+      expect(editRes.status).toBe(422);
+      expect(editRes.body.error.code).toBe('INCIDENT_ALREADY_ACKNOWLEDGED');
+    });
+
+    test('returns 422 if no changes provided or invalid fields', async () => {
+      const created = await request(app)
+        .post('/api/incidents')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ title: 'Validation Target Report', description: 'Report to check patch validation rules.', category: 'OTHER' });
+      const id = created.body.data.incident.id;
+
+      const emptyRes = await request(app)
+        .patch(`/api/incidents/${id}`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({});
+      expect(emptyRes.status).toBe(422);
+      expect(emptyRes.body.error.code).toBe('NO_CHANGES');
+
+      const shortTitle = await request(app)
+        .patch(`/api/incidents/${id}`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ title: 'Hi' });
+      expect(shortTitle.status).toBe(422);
+
+      const invalidCategory = await request(app)
+        .patch(`/api/incidents/${id}`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ category: 'NON_EXISTENT_CATEGORY' });
+      expect(invalidCategory.status).toBe(422);
+      expect(invalidCategory.body.error.code).toBe('INVALID_CATEGORY');
+    });
+  });
 });
+

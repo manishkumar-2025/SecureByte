@@ -63,4 +63,12 @@ async function createIncidentViaApi(token, overrides = {}) {
   return res.body.data.incident;
 }
 
-module.exports = { app, prisma, request, resetDb, createUser, registerAndLogin, loginToken, createIncidentViaApi };
+const { signToken } = require('../src/utils/jwt');
+
+async function createStaffToken({ name = 'Staff User', email, password = 'Password123', role = 'RESPONDER' }) {
+  const user = await createUser({ name, email, password, role });
+  return signToken(user);
+}
+
+module.exports = { app, prisma, request, resetDb, createUser, registerAndLogin, loginToken, createStaffToken, createIncidentViaApi };
+

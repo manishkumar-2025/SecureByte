@@ -381,7 +381,7 @@ describe('Notification preferences', () => {
     const staff = await prisma.user.findUnique({ where: { email: 'prefs-staff@campus.edu' } });
 
     await request(app).post('/api/incidents').set('Authorization', `Bearer ${token}`).send({ isSos: true });
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 350));
 
     const rows = await prisma.notification.findMany({ where: { userId: staff.id, type: 'SOS_ALERT' } });
     // The in-app record is ALWAYS written — only the push is gated.

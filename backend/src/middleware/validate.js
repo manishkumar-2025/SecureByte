@@ -137,6 +137,24 @@ function locationObject() {
     if (room !== undefined && room !== null && room !== '') {
       location.buildingOrRoom = room.trim();
     }
+    // Location verification metadata
+    if (value.currentLatitude != null && value.currentLongitude != null) {
+      location.currentLatitude = Number(value.currentLatitude);
+      location.currentLongitude = Number(value.currentLongitude);
+    }
+    if (value.selectedLatitude != null && value.selectedLongitude != null) {
+      location.selectedLatitude = Number(value.selectedLatitude);
+      location.selectedLongitude = Number(value.selectedLongitude);
+    }
+    if (typeof value.gpsAccuracy === 'number') {
+      location.gpsAccuracy = Number(value.gpsAccuracy);
+    }
+    if (typeof value.locationSource === 'string') {
+      location.locationSource = value.locationSource.trim().slice(0, 50);
+    }
+    if (value.mismatchConfirmed !== undefined) {
+      location.mismatchConfirmed = Boolean(value.mismatchConfirmed);
+    }
     return { value: Object.keys(location).length > 0 ? location : undefined };
   };
 }

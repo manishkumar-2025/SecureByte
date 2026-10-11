@@ -6,6 +6,7 @@ const { parsePagination } = require('../utils/pagination');
 const { notifyUsers, loadSafetyStaff } = require('../lib/notify');
 const { dispatchSosIncident } = require('../services/dispatchService');
 const { scheduleEscalation } = require('../services/escalationService');
+const { evaluateIncidentLocation } = require('../utils/geo');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -116,6 +117,22 @@ async function createIncident(req, res, next) {
       );
     }
 
+    const isSensitive = Boolean(req.validated && req.validated.isSensitive);
+    const accusedPerson = req.validated && req.validated.accusedPerson ? req.validated.accusedPerson.trim() : null;
+    const accusedDepartment = req.validated && req.validated.accusedDepartment ? req.validated.accusedDepartment.trim() : null;
+    const sensitiveCategory = req.validated && req.validated.sensitiveCategory ? req.validated.sensitiveCategory.trim() : null;
+    const confidentialityNoticeAcknowledged = Boolean(req.validated && req.validated.confidentialityNoticeAcknowledged);
+
+    // If marked sensitive, or involves specific accused person/department, route via independent escalation
+    const independentReviewerOnly = isSensitive || Boolean(accusedPerson || accusedDepartment);
+    const escalationPath = req.validated && req.validated.escalationPath
+      ? req.validated.escalationPath
+      : independentReviewerOnly
+      ? 'INDEPENDENT_REVIEW'
+      : 'STANDARD';
+
+    const evaluatedLocation = location ? evaluateIncidentLocation(location) : undefined;
+
     const incident = await prisma.incident.create({
       data: {
         reporterId,
@@ -125,7 +142,14 @@ async function createIncident(req, res, next) {
         priority: payload.priority,
         isSos: payload.isSos,
         status: 'NEW',
-        location: location ? { create: location } : undefined,
+        isSensitive,
+        accusedPerson,
+        accusedDepartment,
+        sensitiveCategory,
+        confidentialityNoticeAcknowledged,
+        independentReviewerOnly,
+        escalationPath,
+        location: evaluatedLocation ? { create: evaluatedLocation } : undefined,
       },
       include: { location: true },
     });
@@ -139,6 +163,32 @@ async function createIncident(req, res, next) {
           previousStatus: 'NEW',
           newStatus: 'NEW',
           responderNotes: '⚠️ Emergency SOS triggered by unverified student account. Dispatched under life-safety emergency fallback policy for authorized staff verification.',
+        },
+      });
+    }
+
+    // Audit trail for sensitive / confidential escalation
+    if (incident.isSensitive || incident.independentReviewerOnly) {
+      await prisma.incidentStatusHistory.create({
+        data: {
+          incidentId: incident.id,
+          updatedBy: reporterId,
+          previousStatus: 'NEW',
+          newStatus: 'NEW',
+          responderNotes: `🔒 Confidential / Sensitive complaint submitted${accusedDepartment ? ` (Involving: ${accusedDepartment})` : ''}. Escalated directly to Independent Oversight Reviewer.`,
+        },
+      });
+    }
+
+    // Audit trail for location verification review signal
+    if (evaluatedLocation && evaluatedLocation.isMismatch) {
+      await prisma.incidentStatusHistory.create({
+        data: {
+          incidentId: incident.id,
+          updatedBy: reporterId,
+          previousStatus: 'NEW',
+          newStatus: 'NEW',
+          responderNotes: `📍 Location discrepancy noted: Selected location is ~${evaluatedLocation.mismatchDistanceMeters}m from current GPS fix. ${evaluatedLocation.mismatchConfirmed ? 'Reporter confirmed incident occurred elsewhere.' : 'Review signal recorded for reviewer verification.'}`,
         },
       });
     }
@@ -173,13 +223,22 @@ async function createIncident(req, res, next) {
   }
 }
 
-/** Notification helper — alerts all RESPONDER + ADMIN accounts. */
+/** Notification helper — alerts safety staff (restricted to ADMIN for sensitive cases). */
 async function notifyNewIncident(incident) {
-  const staff = await loadSafetyStaff();
+  let staff = await loadSafetyStaff();
+  if (incident.isSensitive || incident.independentReviewerOnly) {
+    staff = staff.filter((u) => u.role === 'ADMIN');
+  }
+  if (!staff || staff.length === 0) return;
+
   const where = incident.location && incident.location.campusLandmark;
   const isSos = incident.isSos;
   const isUnverified = incident.title && incident.title.includes('[UNVERIFIED SENDER]');
-  let title = isSos ? '🚨 Emergency SOS alert' : `New ${CATEGORY_LABELS[incident.category] || 'report'} needs attention`;
+  let title = isSos
+    ? '🚨 Emergency SOS alert'
+    : incident.isSensitive
+    ? '🔒 Confidential Report: Independent Oversight Review Required'
+    : `New ${CATEGORY_LABELS[incident.category] || 'report'} needs attention`;
   if (isSos && isUnverified) {
     title = '🚨 [UNVERIFIED SENDER] Emergency SOS alert';
   }
@@ -189,7 +248,12 @@ async function notifyNewIncident(incident) {
     title,
     body,
     incidentId: incident.id,
-    pushData: { incidentId: incident.id, priority: incident.priority, unverifiedSender: isUnverified },
+    pushData: {
+      incidentId: incident.id,
+      priority: incident.priority,
+      unverifiedSender: isUnverified,
+      isSensitive: incident.isSensitive,
+    },
     prefKey: 'sosAlerts',
   });
 }
@@ -243,7 +307,7 @@ async function listMyIncidents(req, res, next) {
 }
 
 // GET /api/incidents/:id — authenticated. Students may view ONLY their own
-// incidents; responders may view all.
+// incidents; responders may view non-sensitive incidents; ADMIN may view all.
 async function getIncidentById(req, res, next) {
   try {
     const incident = await prisma.incident.findUnique({
@@ -253,8 +317,23 @@ async function getIncidentById(req, res, next) {
 
     if (!incident) throw notFound('Incident not found.', 'INCIDENT_NOT_FOUND');
 
-    if (!['RESPONDER', 'ADMIN'].includes(req.user.role) && incident.reporterId !== req.user.id) {
-      throw forbidden('You can only view your own reports.', 'NOT_YOUR_INCIDENT');
+    const isOwner = incident.reporterId === req.user.id;
+    const isAdmin = req.user.role === 'ADMIN';
+
+    // Sensitive / Independent Review complaints:
+    // Strictly restricted to the owner or ADMIN (independent oversight authority).
+    // Standard RESPONDER role cannot view sensitive cases or cases with independentReviewerOnly.
+    if (incident.isSensitive || incident.independentReviewerOnly) {
+      if (!isOwner && !isAdmin) {
+        throw forbidden(
+          'This is a confidential / sensitive report restricted to authorized independent reviewers.',
+          'SENSITIVE_ACCESS_RESTRICTED'
+        );
+      }
+    } else {
+      if (!['RESPONDER', 'ADMIN'].includes(req.user.role) && !isOwner) {
+        throw forbidden('You can only view your own reports.', 'NOT_YOUR_INCIDENT');
+      }
     }
 
     res.status(200).json({ success: true, data: { incident } });

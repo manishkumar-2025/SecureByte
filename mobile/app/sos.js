@@ -154,9 +154,23 @@ function Sos() {
       description: 'Emergency SOS alert triggered from the CampusShield mobile app.',
     };
     if (locStatus === 'granted' && locCoords) {
-      payload.location = { latitude: locCoords.latitude, longitude: locCoords.longitude };
+      payload.location = {
+        latitude: locCoords.latitude,
+        longitude: locCoords.longitude,
+        currentLatitude: locCoords.latitude,
+        currentLongitude: locCoords.longitude,
+        gpsAccuracy: locCoords.accuracy ?? null,
+        locationSource: 'GPS',
+      };
     } else if (landmark.trim().length >= 3) {
-      payload.location = { campusLandmark: landmark.trim() };
+      payload.location = {
+        campusLandmark: landmark.trim(),
+        locationSource: 'LANDMARK',
+      };
+    } else {
+      payload.location = {
+        locationSource: 'UNAVAILABLE',
+      };
     }
 
     try {
@@ -325,8 +339,20 @@ function Sos() {
                   <Text style={[styles.kvValue, { color: c.text }]}>
                     {incident.location.latitude != null
                       ? `${incident.location.latitude.toFixed(5)}, ${incident.location.longitude?.toFixed(5)}`
-                      : ''}
-                    {incident.location.campusLandmark ? `  📍 ${incident.location.campusLandmark}` : ''}
+                      : incident.location.campusLandmark
+                      ? `📍 ${incident.location.campusLandmark}`
+                      : '⚠️ Coordinates unavailable — responders alerted to contact student'}
+                  </Text>
+                  <Text style={[styles.kvLabel, { color: c.faint }]}>Location Verification</Text>
+                  <Text style={[styles.kvValue, { color: incident.location.isOutsideCampus ? '#D97706' : c.success, fontWeight: '600' }]}>
+                    {incident.location.verificationStatus === 'VERIFIED_MATCH'
+                      ? '✓ GPS Coordinates Verified'
+                      : incident.location.verificationStatus === 'UNAVAILABLE'
+                      ? '⚠️ Unverified (No Coordinates)'
+                      : incident.location.locationSource === 'LANDMARK'
+                      ? '📍 Campus Landmark Supplied'
+                      : '● Captured via Device'}
+                    {incident.location.isOutsideCampus ? ' • Outside Campus Perimeter (Off-Campus Protocol Active)' : ''}
                   </Text>
                 </>
               ) : null}

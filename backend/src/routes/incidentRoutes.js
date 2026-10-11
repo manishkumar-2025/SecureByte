@@ -26,6 +26,12 @@ router.post(
     priority: rules.optionalOneOf({ values: require('../utils/constants').CLIENT_PRIORITIES, label: 'Priority' }),
     isSos: rules.boolean({ label: 'isSos' }),
     location: rules.locationObject(),
+    isSensitive: rules.boolean({ label: 'isSensitive', required: false }),
+    accusedPerson: rules.string({ label: 'Accused Person', min: 2, max: 150, required: false }),
+    accusedDepartment: rules.string({ label: 'Accused Department', min: 2, max: 150, required: false }),
+    sensitiveCategory: rules.string({ label: 'Sensitive Category', min: 2, max: 100, required: false }),
+    confidentialityNoticeAcknowledged: rules.boolean({ label: 'confidentialityNoticeAcknowledged', required: false }),
+    escalationPath: rules.string({ label: 'Escalation Path', min: 2, max: 50, required: false }),
   }),
   createIncident
 );

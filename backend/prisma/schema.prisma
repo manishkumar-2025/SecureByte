@@ -183,6 +183,14 @@ model Incident {
   // (e.g. "/uploads/ab12cd34-….jpg"). Null until a photo is attached.
   // Files live on disk (uploads/); only the path is stored here.
   photoPath   String?
+  // Sensitive Complaints & Independent Review fields
+  isSensitive                        Boolean          @default(false)
+  accusedPerson                      String?
+  accusedDepartment                  String?
+  escalationPath                     String?          @default("STANDARD")
+  independentReviewerOnly            Boolean          @default(false)
+  sensitiveCategory                  String?
+  confidentialityNoticeAcknowledged  Boolean          @default(false)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
@@ -195,17 +203,31 @@ model Incident {
   @@index([priority])
   @@index([category])
   @@index([isSos, createdAt])
+  @@index([isSensitive])
+  @@index([independentReviewerOnly])
   @@map("incidents")
 }
 
 model IncidentLocation {
-  id             String   @id @default(uuid())
-  incidentId     String   @unique
-  latitude       Float?
-  longitude      Float?
-  campusLandmark String?
-  buildingOrRoom String?
-  createdAt      DateTime @default(now())
+  id                     String   @id @default(uuid())
+  incidentId             String   @unique
+  latitude               Float?
+  longitude              Float?
+  campusLandmark         String?
+  buildingOrRoom         String?
+  // Advanced Location Verification & Geofence Validation
+  currentLatitude        Float?
+  currentLongitude       Float?
+  selectedLatitude       Float?
+  selectedLongitude      Float?
+  gpsAccuracy            Float?
+  locationSource         String?  @default("UNAVAILABLE")
+  verificationStatus     String?  @default("UNVERIFIED")
+  isMismatch             Boolean  @default(false)
+  mismatchDistanceMeters Float?
+  isOutsideCampus        Boolean  @default(false)
+  mismatchConfirmed      Boolean  @default(false)
+  createdAt              DateTime @default(now())
 
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 

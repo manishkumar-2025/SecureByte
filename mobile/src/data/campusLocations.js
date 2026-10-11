@@ -236,3 +236,5 @@ module.exports = {
   isValidCoordinate,
   buildGoogleMapsDirectionsUrl,
 };
+module.exports.default = module.exports;
+

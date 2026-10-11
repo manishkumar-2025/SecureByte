@@ -206,7 +206,7 @@ Postman: import `postman/CampusShield.postman_collection.json` → run Login Stu
 | Member | Responsibility |
 |--------|----------------|
 | **Ayush Kumar** | React Native + Expo app, navigation & screens, SOS workflow, incident forms, location permissions, frontend API integration, device testing |
-| **Backend Developer** | Express APIs, PostgreSQL + Prisma schema, auth & RBAC, incident + status-history engine, API tests, Postman & docs |
+| **Manish Kumar** | Express APIs, PostgreSQL + Prisma schema, auth & RBAC, incident + status-history engine, API tests, Postman & docs |
 
 Workflow: separate Git branches (`feature/frontend-*`, `feature/backend-*`), PRs reviewed by the other member, API contract coordinated through `docs/API.md`.
 

@@ -1,0 +1,42 @@
+# ── Dependencies ──────────────────────────────────────────────
+node_modules/
+
+# ── Expo & Build Artifacts ────────────────────────────────────
+.expo/
+dist/
+web-build/
+*.backup
+*.sdk57-backup
+*.orig
+
+# ── Environment & Secrets ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Native Android & iOS Prebuilds ────────────────────────────
+android/
+ios/
+
+# ── Keystores, Certificates & Mobile Cloud Credentials ───────
+*.jks
+*.keystore
+*.p12
+*.p8
+*.pem
+*.key
+google-services.json
+GoogleService-Info.plist
+
+# ── Logs & Debugging ──────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── OS & Editor Files ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

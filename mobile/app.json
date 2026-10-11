@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "SecureByte",
+    "slug": "securebyte",
+    "owner": "securebyte",
+    "version": "3.0.0",
+    "scheme": "securebyte",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F4F6FB",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "supportsTablet": true,
+      "icon": "./assets/icon.png"
+    },
+    "android": {
+      "package": "com.hackday.securebyte",
+      "versionCode": 3,
+      "config": {
+        "googleMaps": {
+          "apiKey": ""
+        }
+      },
+      "icon": "./assets/icon.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1E3A8A"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SecureByte attaches your GPS coordinates to emergency alerts and incident reports so responders can find you. Location is only requested when you submit a report."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SecureByte lets you attach a photo to your incident reports so responders can see what happened."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#DC2626",
+          "mode": "production"
+        }
+      ],
+      "expo-asset"
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "ff13c5a2-acb6-4181-9a8b-d596ed6c8c32"
+      }
+    }
+  }
+}

@@ -173,6 +173,8 @@ function Report() {
     setError(null);
     if (!validate()) return;
     setSubmitting(true);
+
+    let incidentPayload = null;
     try {
       const locPayload = {};
       if (includeLocation) {
@@ -202,7 +204,9 @@ function Report() {
         .filter(Boolean)
         .join(' ');
 
-      const incidentPayload = {
+      const fullDescription = `${structuredHeader}\n\n${description.trim()}`;
+
+      incidentPayload = {
         title: title.trim(),
         description: fullDescription,
         category: selectedMaster.backendCategory,
@@ -211,43 +215,42 @@ function Report() {
         ...(hasLocation ? { location: locPayload } : {}),
       };
 
-      try {
-        const data = await api('/api/incidents', {
-          method: 'POST',
-          body: incidentPayload,
-        });
+      const data = await api('/api/incidents', {
+        method: 'POST',
+        body: incidentPayload,
+      });
 
-        // Photo evidence upload (best-effort)
-        if (photo && data.incident?.id) {
-          setUploading(true);
-          try {
-            await apiUpload(`/api/incidents/${data.incident.id}/photo`, photo);
-          } catch (uploadErr) {
-            toast.info('Report saved — photo upload failed', 'You can retry from the report detail screen.');
-            router.replace(`/incident/${data.incident.id}`);
-            return;
-          } finally {
-            setUploading(false);
-          }
-        }
-
-        toast.success('Incident Report Submitted ✅', 'Routed to campus safety responders & grievance committees.');
-        router.replace('/my-reports');
-      } catch (e) {
-        if (e.code === 'NETWORK_ERROR' || e.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-          await enqueueIncident(incidentPayload);
-          toast.info('Saved to Offline Outbox 💾', 'No network detected. Your report is saved locally and will automatically sync once connected.');
-          router.replace('/my-reports');
+      // Photo evidence upload (best-effort)
+      if (photo && data.incident?.id) {
+        setUploading(true);
+        try {
+          await apiUpload(`/api/incidents/${data.incident.id}/photo`, photo);
+        } catch (uploadErr) {
+          toast.info('Report saved — photo upload failed', 'You can retry from the report detail screen.');
+          router.replace(`/incident/${data.incident.id}`);
           return;
+        } finally {
+          setUploading(false);
         }
-
-        setError(e.message);
-        if (e.details) setFieldErrors(e.details);
-        toast.error('Could not submit', e.message);
-      } finally {
-        setSubmitting(false);
       }
-    };
+
+      toast.success('Incident Report Submitted ✅', 'Routed to campus safety responders & grievance committees.');
+      router.replace('/my-reports');
+    } catch (e) {
+      if (incidentPayload && (e.code === 'NETWORK_ERROR' || e.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false))) {
+        await enqueueIncident(incidentPayload);
+        toast.info('Saved to Offline Outbox 💾', 'No network detected. Your report is saved locally and will automatically sync once connected.');
+        router.replace('/my-reports');
+        return;
+      }
+
+      setError(e.message);
+      if (e.details) setFieldErrors(e.details);
+      toast.error('Could not submit', e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const busy = submitting || uploading;
 

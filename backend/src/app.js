@@ -63,21 +63,6 @@ function createApp() {
   app.get('/api/health', healthHandler);
   app.use('/api', routes);
 
-  // Uploaded photo evidence. Filenames are server-generated UUIDs (the
-  // client never controls the path), so URLs are effectively unguessable.
-  // CORS-friendly so the Expo app and any web preview can render images.
-  app.use(
-    '/uploads',
-    express.static(path.join(__dirname, '..', 'uploads'), {
-      fallthrough: false,
-      maxAge: '7d',
-      setHeaders(res) {
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-      },
-    })
-  );
-
   // Web Command Center & Campus Dispatch Portal (accessible from browser)
   app.use(express.static(path.join(__dirname, '..', 'public')));
 

@@ -4,6 +4,8 @@ const { badRequest, unprocessable, notFound, forbidden, conflict } = require('..
 const { CLIENT_CATEGORIES, CLIENT_PRIORITIES } = require('../utils/constants');
 const { parsePagination } = require('../utils/pagination');
 const { notifyUsers, loadSafetyStaff } = require('../lib/notify');
+const { dispatchSosIncident } = require('../services/dispatchService');
+const { scheduleEscalation } = require('../services/escalationService');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -59,6 +61,17 @@ async function createIncident(req, res, next) {
     const reporterId = req.user.id; // NEVER trust a reporterId from the client body
     const { location } = req.validated;
 
+    const isSos = Boolean(req.validated && req.validated.isSos);
+    const isUnverifiedStudent = req.user.role === 'STUDENT' && req.user.isVerified === false;
+
+    // Normal incident reports require verified accounts to prevent spam and abuse
+    if (isUnverifiedStudent && !isSos) {
+      throw forbidden(
+        'Account verification required. Please verify your email and phone number to submit incident reports.',
+        'UNVERIFIED_ACCOUNT'
+      );
+    }
+
     if (!req.validated.isSos) {
       if (!req.validated.title || req.validated.title.length < 5 || req.validated.title.length > 120) {
         throw unprocessable('Title must be between 5 and 120 characters.', 'VALIDATION_ERROR', {
@@ -77,6 +90,16 @@ async function createIncident(req, res, next) {
     }
 
     const payload = normalizeIncidentPayload(req.validated);
+
+    // Life-safety Emergency Fallback:
+    // If an unverified student triggers an SOS, do NOT silently drop it.
+    // Flag it prominently as unverified for authorized staff triage while keeping anti-abuse logs.
+    if (isSos && isUnverifiedStudent) {
+      if (!payload.title.startsWith('[UNVERIFIED SENDER]')) {
+        payload.title = `[UNVERIFIED SENDER] ${payload.title}`;
+      }
+      payload.description = `[UNVERIFIED ACCOUNT EMERGENCY FALLBACK - URGENT STAFF TRIAGE REQUIRED] ${payload.description}`;
+    }
 
     // Anti-duplicate guard: same user + same title/category/SOS flag within
     // a short window → 409. Protects against double-taps and retry storms.
@@ -107,10 +130,42 @@ async function createIncident(req, res, next) {
       include: { location: true },
     });
 
+    // Audit trail for unverified emergency fallback
+    if (incident.isSos && isUnverifiedStudent) {
+      await prisma.incidentStatusHistory.create({
+        data: {
+          incidentId: incident.id,
+          updatedBy: reporterId,
+          previousStatus: 'NEW',
+          newStatus: 'NEW',
+          responderNotes: '⚠️ Emergency SOS triggered by unverified student account. Dispatched under life-safety emergency fallback policy for authorized staff verification.',
+        },
+      });
+    }
+
     // Alert safety staff (in-app center rows + best-effort push).
     // Fire-and-forget: the reporter's HTTP response must never wait on
     // (or fail with) notification delivery.
     notifyNewIncident(incident).catch((err) => console.error('[notify]', err.message));
+
+    // If SOS alert: initiate automatic server-side SOS dispatch (SMS to emergency contacts & responders)
+    // and start the 60-second backend escalation timer
+    if (incident.isSos) {
+      (async () => {
+        try {
+          const [contacts, reporter] = await Promise.all([
+            prisma.emergencyContact.findMany({ where: { userId: reporterId } }),
+            prisma.user.findUnique({ where: { id: reporterId } }),
+          ]);
+          await dispatchSosIncident({ incident, reporter, contacts });
+        } catch (err) {
+          console.error('[dispatch] Automatic SOS dispatch error:', err.message);
+        }
+      })();
+
+      // Start 60-second escalation timer on the backend
+      scheduleEscalation(incident.id);
+    }
 
     res.status(201).json({ success: true, data: { incident } });
   } catch (err) {
@@ -123,14 +178,18 @@ async function notifyNewIncident(incident) {
   const staff = await loadSafetyStaff();
   const where = incident.location && incident.location.campusLandmark;
   const isSos = incident.isSos;
-  const title = isSos ? '🚨 Emergency SOS alert' : `New ${CATEGORY_LABELS[incident.category] || 'report'} needs attention`;
+  const isUnverified = incident.title && incident.title.includes('[UNVERIFIED SENDER]');
+  let title = isSos ? '🚨 Emergency SOS alert' : `New ${CATEGORY_LABELS[incident.category] || 'report'} needs attention`;
+  if (isSos && isUnverified) {
+    title = '🚨 [UNVERIFIED SENDER] Emergency SOS alert';
+  }
   const body = where ? `${incident.title} — ${where}` : incident.title;
   await notifyUsers(staff, {
     type: isSos ? 'SOS_ALERT' : 'NEW_INCIDENT',
     title,
     body,
     incidentId: incident.id,
-    pushData: { incidentId: incident.id, priority: incident.priority },
+    pushData: { incidentId: incident.id, priority: incident.priority, unverifiedSender: isUnverified },
     prefKey: 'sosAlerts',
   });
 }
@@ -272,10 +331,102 @@ async function deleteIncidentPhoto(req, res, next) {
   }
 }
 
+// GET /api/incidents/:id/photo — authenticated + IDOR protected.
+// Serves photo evidence strictly to the reporter (owner) or RESPONDER / ADMIN.
+async function getIncidentPhoto(req, res, next) {
+  try {
+    const incident = await prisma.incident.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, reporterId: true, photoPath: true },
+    });
+
+    if (!incident) throw notFound('Incident not found.', 'INCIDENT_NOT_FOUND');
+    if (!incident.photoPath) throw notFound('This report has no photo attached.', 'NO_PHOTO');
+
+    const isOwner = incident.reporterId === req.user.id;
+    const isStaff = ['RESPONDER', 'ADMIN'].includes(req.user.role);
+    if (!isOwner && !isStaff) {
+      throw forbidden('You do not have permission to view this incident photo.', 'NOT_YOUR_INCIDENT');
+    }
+
+    const filename = path.basename(incident.photoPath);
+    const absolutePath = path.join(__dirname, '..', '..', 'uploads', filename);
+
+    if (!fs.existsSync(absolutePath)) {
+      throw notFound('Photo evidence file does not exist on disk.', 'FILE_NOT_FOUND');
+    }
+
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.sendFile(absolutePath);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/incidents/:id — owner-only, only while status === 'NEW',
+// non-SOS incidents only. Allows correcting title, description, category.
+async function updateIncident(req, res, next) {
+  try {
+    const incident = await prisma.incident.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, reporterId: true, status: true, isSos: true },
+    });
+    if (!incident) throw notFound('Incident not found.', 'INCIDENT_NOT_FOUND');
+    if (incident.reporterId !== req.user.id)
+      throw forbidden('Only the reporter can edit this incident.', 'NOT_YOUR_INCIDENT');
+    if (incident.status !== 'NEW')
+      throw unprocessable(
+        'Incidents can only be edited before they are acknowledged by a responder.',
+        'INCIDENT_ALREADY_ACKNOWLEDGED'
+      );
+    if (incident.isSos)
+      throw unprocessable(
+        'Emergency SOS alerts cannot be edited after submission.',
+        'SOS_EDIT_FORBIDDEN'
+      );
+
+    const { title, description, category } = req.body || {};
+    const updates = {};
+
+    if (title !== undefined) {
+      if (typeof title !== 'string' || title.trim().length < 5 || title.trim().length > 120)
+        throw unprocessable('Title must be between 5 and 120 characters.', 'VALIDATION_ERROR');
+      updates.title = title.trim();
+    }
+    if (description !== undefined) {
+      if (typeof description !== 'string' || description.trim().length < 10 || description.trim().length > 2000)
+        throw unprocessable('Description must be between 10 and 2000 characters.', 'VALIDATION_ERROR');
+      updates.description = description.trim();
+    }
+    if (category !== undefined) {
+      if (!CLIENT_CATEGORIES.includes(category))
+        throw unprocessable('Category must be one of: ' + CLIENT_CATEGORIES.join(', ') + '.', 'INVALID_CATEGORY');
+      updates.category = category;
+    }
+
+    if (Object.keys(updates).length === 0)
+      throw unprocessable('Provide at least one field to update (title, description, or category).', 'NO_CHANGES');
+
+    const updated = await prisma.incident.update({
+      where: { id: incident.id },
+      data: updates,
+      include: { ...incidentInclude, reporter: { select: { id: true, name: true } } },
+    });
+
+    res.status(200).json({ success: true, data: { incident: updated } });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   createIncident,
   listMyIncidents,
   getIncidentById,
+  updateIncident,
   uploadIncidentPhoto,
   deleteIncidentPhoto,
+  getIncidentPhoto,
 };

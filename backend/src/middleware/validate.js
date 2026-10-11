@@ -174,4 +174,23 @@ function validateBody(fieldRules) {
   };
 }
 
-module.exports = { validateBody, rules: { string, email, password, oneOf, optionalOneOf, boolean, locationObject } };
+const PHONE_RE = /^\+?[0-9]{7,15}$/;
+
+function phone({ label = 'Phone number', required = true } = {}) {
+  return (value) => {
+    if (value === undefined || value === null || value === '') {
+      return required ? { error: `${label} is required.` } : { value: undefined };
+    }
+    if (typeof value !== 'string') return { error: `${label} must be text.` };
+    const cleaned = value.replace(/[\s\-()]/g, '');
+    if (!PHONE_RE.test(cleaned)) {
+      return { error: `${label} must contain between 7 and 15 digits, optionally starting with +.` };
+    }
+    return { value: cleaned };
+  };
+}
+
+module.exports = {
+  validateBody,
+  rules: { string, email, password, phone, oneOf, optionalOneOf, boolean, locationObject },
+};

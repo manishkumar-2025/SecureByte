@@ -56,4 +56,31 @@ const incidentLimiter = rateLimit({
   handler: jsonHandler('You have submitted several alerts in a short time. Please wait a few minutes.'),
 });
 
-module.exports = { globalLimiter, loginLimiter, refreshLimiter, registerLimiter, incidentLimiter };
+/** Rate limiter for safety check-ins (15 check-ins per 10 minutes per user/IP). */
+const checkInLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.user ? req.user.id : 'anon'}:${req.ip}`,
+  handler: jsonHandler('Too many check-ins submitted in a short time. Please wait a few minutes.'),
+});
+
+/** Rate limiter for device push token registration (15 registrations per 15 minutes). */
+const deviceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: jsonHandler('Too many device token registration requests.'),
+});
+
+module.exports = {
+  globalLimiter,
+  loginLimiter,
+  refreshLimiter,
+  registerLimiter,
+  incidentLimiter,
+  checkInLimiter,
+  deviceLimiter,
+};

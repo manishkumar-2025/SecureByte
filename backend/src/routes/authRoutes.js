@@ -8,6 +8,9 @@ const {
   changePassword,
   me,
   setupResponder,
+  sendOtpEndpoint,
+  verifyOtpEndpoint,
+  verificationStatusEndpoint,
 } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/auth');
 
@@ -20,6 +23,7 @@ router.post(
     name: rules.string({ label: 'Name', min: 2, max: 80 }),
     email: rules.email(),
     password: rules.password(),
+    phone: rules.phone({ required: false }),
   }),
   register
 );
@@ -33,6 +37,29 @@ router.post(
   }),
   login
 );
+
+// Dual Email & Mobile Verification endpoints
+router.post(
+  '/send-otp',
+  requireAuth,
+  validateBody({
+    channel: rules.string({ label: 'Channel', min: 3, max: 10 }),
+    target: rules.string({ label: 'Target', min: 3, max: 120, required: false }),
+  }),
+  sendOtpEndpoint
+);
+
+router.post(
+  '/verify-otp',
+  requireAuth,
+  validateBody({
+    channel: rules.string({ label: 'Channel', min: 3, max: 10 }),
+    code: rules.string({ label: 'Verification code', min: 4, max: 10 }),
+  }),
+  verifyOtpEndpoint
+);
+
+router.get('/verification-status', requireAuth, verificationStatusEndpoint);
 
 // Silent session renewal. The refresh token is the credential here, so the
 // endpoint gets its own limiter instead of consuming the login budget.

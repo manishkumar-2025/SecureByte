@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SecureByte — Emergency Command Center & Safety Portal</title>
-  <meta name="description" content="Campus emergency alerts, real-time incident triage, live safety map, and student safety portal.">
+  <title>SecureByte — Campus Emergency Command Center & Safety Portal</title>
+  <meta name="description" content="Campus emergency alerts, real-time incident triage, live safety map, standard operating procedures, and comprehensive student safety portal.">
   <link rel="stylesheet" href="app.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,17 +16,30 @@
   <!-- Top Glassmorphism Navigation -->
   <header class="app-header">
     <div class="header-left">
+      <!-- Mobile Drawer Toggle Button -->
+      <button id="mobileMenuBtn" class="mobile-menu-btn" aria-label="Toggle Navigation Menu">
+        <span>☰</span>
+      </button>
+
       <div class="brand-badge">
         <span class="shield-icon">🛡️</span>
         <div class="brand-text">
           <span class="brand-name">SecureByte</span>
-          <span class="brand-sub">Command Center & Safety Portal</span>
+          <span class="brand-sub">Command Center & Safety Portal · BIT Sindri</span>
         </div>
       </div>
+
       <div class="system-status-pill" id="systemStatusPill">
         <span class="status-dot pulse"></span>
         <span id="systemStatusText">Connecting to API…</span>
       </div>
+    </div>
+
+    <!-- Quick Global Stats Ticker -->
+    <div class="header-ticker" id="headerTicker">
+      <div class="ticker-item"><span class="ticker-dot green"></span> Campus: <strong>Normal Operations</strong></div>
+      <div class="ticker-item"><span class="ticker-dot red"></span> Active SOS: <strong id="tickerSosCount">0</strong></div>
+      <div class="ticker-item"><span class="ticker-dot yellow"></span> In Queue: <strong id="tickerOpenCount">0</strong></div>
     </div>
 
     <div class="header-actions">
@@ -58,8 +71,10 @@
   <main class="main-container">
     
     <!-- Left Navigation Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="appSidebar">
       <nav class="nav-menu">
+        <!-- GROUP 1: COMMAND & DISPATCH -->
+        <div class="nav-section-title">COMMAND & DISPATCH</div>
         <button class="nav-item active" data-tab="dispatchTab">
           <span class="nav-icon">🚨</span>
           <span class="nav-label">Live Dispatch</span>
@@ -69,28 +84,55 @@
           <span class="nav-icon">🗺️</span>
           <span class="nav-label">Safety Map</span>
         </button>
+        <button class="nav-item" data-tab="analyticsTab">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">Intelligence & Analytics</span>
+        </button>
+
+        <!-- GROUP 2: STUDENT SAFETY SERVICES -->
+        <div class="nav-section-title">STUDENT SERVICES</div>
         <button class="nav-item" data-tab="studentTab">
           <span class="nav-icon">📱</span>
-          <span class="nav-label">Student Portal</span>
+          <span class="nav-label">Student SOS & Report</span>
+        </button>
+        <button class="nav-item" data-tab="myReportsTab">
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">My Reports</span>
+          <span id="myReportsBadge" class="nav-badge info-badge hidden">0</span>
         </button>
         <button class="nav-item" data-tab="escortTab">
           <span class="nav-icon">🚶</span>
-          <span class="nav-label">Virtual Escort</span>
+          <span class="nav-label">Virtual Night Escort</span>
           <span id="escortActiveDot" class="nav-dot hidden"></span>
         </button>
-        <button class="nav-item" data-tab="analyticsTab">
-          <span class="nav-icon">📊</span>
-          <span class="nav-label">Analytics</span>
+        <button class="nav-item" data-tab="contactsTab">
+          <span class="nav-icon">☎️</span>
+          <span class="nav-label">Helplines & Contacts</span>
         </button>
+
+        <!-- GROUP 3: GOVERNANCE & PROTOCOLS -->
+        <div class="nav-section-title">GOVERNANCE & ADMIN</div>
         <button class="nav-item" data-tab="announcementsTab">
           <span class="nav-icon">📢</span>
-          <span class="nav-label">Broadcasts</span>
+          <span class="nav-label">Safety Broadcasts</span>
+        </button>
+        <button class="nav-item" data-tab="protocolsTab">
+          <span class="nav-icon">📖</span>
+          <span class="nav-label">Emergency Protocols (SOPs)</span>
+        </button>
+        <button class="nav-item" data-tab="usersTab" id="navUsersTab">
+          <span class="nav-icon">👥</span>
+          <span class="nav-label">Campus User Roster</span>
+        </button>
+        <button class="nav-item" data-tab="settingsTab">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-label">Account & System</span>
         </button>
       </nav>
 
       <!-- Quick Demo Account Fill Section -->
       <div class="demo-switch-box">
-        <div class="demo-title">⚡ Quick Sign-In</div>
+        <div class="demo-title">⚡ Instant Role Switcher</div>
         <div class="demo-buttons">
           <button class="demo-chip student-chip" onclick="quickLogin('student@securebyte.dev', 'Student@123')">
             🎓 Student
@@ -108,19 +150,54 @@
     <!-- Center Content Viewport -->
     <section class="viewport">
 
-      <!-- TAB 1: LIVE DISPATCH & QUEUE -->
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 1: LIVE DISPATCH & QUEUE
+           ═════════════════════════════════════════════════════════ -->
       <div id="dispatchTab" class="tab-pane active">
         <div class="pane-header">
           <div>
             <h1 class="pane-title">Campus Emergency Dispatch & Queue</h1>
-            <p class="pane-subtitle">Prioritized incident queue: Emergency SOS alerts first, followed by live categorized campus reports.</p>
+            <p class="pane-subtitle">Prioritized incident command: Real-time SOS telemetry first, followed by categorized campus reports with audit logging.</p>
           </div>
           <div class="pane-actions">
+            <button id="exportCsvBtn" class="btn-secondary" title="Export current incident queue as CSV">📥 Export CSV</button>
             <button id="refreshQueueBtn" class="btn-secondary">🔄 Refresh Queue</button>
           </div>
         </div>
 
-        <!-- Filter & Search Toolbar -->
+        <!-- Metric Summary Strip -->
+        <div class="queue-stats-strip">
+          <div class="queue-stat-card">
+            <span class="q-icon">📋</span>
+            <div>
+              <div class="q-val" id="queueTotalVal">0</div>
+              <div class="q-lbl">In Queue</div>
+            </div>
+          </div>
+          <div class="queue-stat-card warning">
+            <span class="q-icon">🆕</span>
+            <div>
+              <div class="q-val" id="queueNewVal">0</div>
+              <div class="q-lbl">Unassigned / New</div>
+            </div>
+          </div>
+          <div class="queue-stat-card danger">
+            <span class="q-icon">🚨</span>
+            <div>
+              <div class="q-val" id="queueSosVal">0</div>
+              <div class="q-lbl">Critical SOS</div>
+            </div>
+          </div>
+          <div class="queue-stat-card success">
+            <span class="q-icon">✅</span>
+            <div>
+              <div class="q-val" id="queueResolvedVal">0</div>
+              <div class="q-lbl">Resolved</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter & Search Toolbar with View Switcher -->
         <div class="toolbar-card">
           <div class="search-wrap">
             <span class="search-icon">🔍</span>
@@ -153,24 +230,54 @@
               <option value="FACILITY_CONCERN">🛠️ Facility Concern</option>
               <option value="OTHER">📌 Other</option>
             </select>
+
+            <!-- View Switcher Toggle -->
+            <div class="view-toggle-group">
+              <button id="viewCardsBtn" class="view-btn active" title="Cards View">🗂️ Cards</button>
+              <button id="viewTableBtn" class="view-btn" title="Table View">📑 Table</button>
+            </div>
           </div>
         </div>
 
-        <!-- Incident Cards Grid / List -->
+        <!-- View 1: Incident Cards Grid -->
         <div id="incidentListContainer" class="incident-grid">
           <div class="loading-spinner-wrap">
             <div class="spinner"></div>
             <span>Loading live campus incidents…</span>
           </div>
         </div>
+
+        <!-- View 2: High-Density Incident Data Table -->
+        <div id="incidentTableContainer" class="table-container hidden">
+          <table class="data-table" id="incidentDataTable">
+            <thead>
+              <tr>
+                <th>REF ID</th>
+                <th>Type / Title</th>
+                <th>Category</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Location / Landmark</th>
+                <th>Reporter</th>
+                <th>Time</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="incidentTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <!-- TAB 2: SAFETY MAP -->
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 2: SAFETY MAP & RESOURCES
+           ═════════════════════════════════════════════════════════ -->
       <div id="mapTab" class="tab-pane">
         <div class="pane-header">
           <div>
-            <h1 class="pane-title">Campus Safety & Resource Map</h1>
-            <p class="pane-subtitle">Geolocated emergency stations, AEDs, security checkpoints, and emergency exits across campus.</p>
+            <h1 class="pane-title">Campus Safety & Resource Navigator</h1>
+            <p class="pane-subtitle">Geolocated emergency stations, security posts, AEDs, and emergency exits across BIT Sindri campus.</p>
           </div>
           <div class="map-category-chips" id="mapCategoryChips">
             <button class="chip active" data-category="">All Resources</button>
@@ -199,20 +306,25 @@
 
           <!-- Selected Resource Sidebar Details -->
           <div class="map-sidebar-card">
-            <h3 class="sidebar-card-title">Campus Safety Points</h3>
+            <div class="map-sidebar-header">
+              <h3 class="sidebar-card-title">Campus Safety Stations</h3>
+              <input type="text" id="mapSearchInput" placeholder="Filter stations…" class="sidebar-search">
+            </div>
             <div id="safetyPointsList" class="safety-points-scroll">
-              <div class="empty-state-card">Select a pin on the map or click a resource below.</div>
+              <div class="empty-state-card">Loading safety points…</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- TAB 3: STUDENT SIMULATION PORTAL -->
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 3: STUDENT SOS & SAFETY PORTAL
+           ═════════════════════════════════════════════════════════ -->
       <div id="studentTab" class="tab-pane">
         <div class="pane-header">
           <div>
             <h1 class="pane-title">Student Safety & SOS Portal</h1>
-            <p class="pane-subtitle">Trigger simulated emergency SOS with 3-second abort window, file categorized incident reports, or record safety check-ins.</p>
+            <p class="pane-subtitle">Trigger emergency SOS with 3-second abort window, file verified incident reports, or record immediate safety check-ins.</p>
           </div>
         </div>
 
@@ -221,7 +333,7 @@
           <div class="sos-card">
             <div class="sos-halo"></div>
             <h2 class="sos-title">Emergency SOS Alert</h2>
-            <p class="sos-desc">Pressing this button activates a 3-second tactile countdown to alert all campus security staff with your current GPS location.</p>
+            <p class="sos-desc">Pressing this button activates a 3-second tactile countdown to alert all campus security staff with your current coordinates.</p>
             
             <div id="sosCountdownArea" class="sos-countdown-wrap hidden">
               <div class="countdown-circle" id="countdownNumber">3</div>
@@ -231,7 +343,7 @@
 
             <button id="triggerSosBtn" class="btn-trigger-sos">
               <span class="sos-btn-text">SOS</span>
-              <span class="sos-btn-sub">HOLD / PRESS TO ACTIVATE</span>
+              <span class="sos-btn-sub">PRESS TO ACTIVATE COUNTDOWN</span>
             </button>
 
             <div class="sos-landmark-fallback">
@@ -291,7 +403,7 @@
           <!-- Safety Check-In Card -->
           <div class="checkin-card">
             <h2 class="card-title">🟢 Safety Check-in</h2>
-            <p class="card-desc">Check in during campus incidents or late hours so security and emergency contacts know your status.</p>
+            <p class="card-desc">Check in during campus alerts or late hours so security and emergency contacts know your verified status.</p>
             <div class="checkin-buttons">
               <button id="checkinSafeBtn" class="btn-checkin-safe">
                 <span>✅ I AM SAFE</span>
@@ -307,28 +419,70 @@
         </div>
       </div>
 
-      <!-- TAB 4: VIRTUAL SAFETY ESCORT / NIGHT WALK (NEW FEATURE) -->
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 4: MY SUBMITTED REPORTS (STUDENT TRACKING)
+           ═════════════════════════════════════════════════════════ -->
+      <div id="myReportsTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">My Filed Safety Reports</h1>
+            <p class="pane-subtitle">Live resolution tracking for every report filed under your account. Follow responder assignments, notes, and milestones.</p>
+          </div>
+          <div class="pane-actions">
+            <button id="myReportsNewBtn" class="btn-primary">＋ File New Report</button>
+            <button id="myReportsRefreshBtn" class="btn-secondary">🔄 Refresh</button>
+          </div>
+        </div>
+
+        <div class="toolbar-card">
+          <div class="filter-chips-row" id="myReportsFilterChips">
+            <button class="chip active" data-status="">All Reports</button>
+            <button class="chip" data-status="NEW">New</button>
+            <button class="chip" data-status="ACKNOWLEDGED">Acknowledged</button>
+            <button class="chip" data-status="IN_PROGRESS">In Progress</button>
+            <button class="chip" data-status="RESOLVED">Resolved</button>
+          </div>
+        </div>
+
+        <div id="myReportsContainer" class="incident-grid">
+          <div class="loading-spinner-wrap"><div class="spinner"></div><span>Loading your reports…</span></div>
+        </div>
+      </div>
+
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 5: VIRTUAL SAFETY ESCORT / NIGHT WALK
+           ═════════════════════════════════════════════════════════ -->
       <div id="escortTab" class="tab-pane">
         <div class="pane-header">
           <div>
             <h1 class="pane-title">Virtual Campus Escort & Night Walk Timer</h1>
-            <p class="pane-subtitle">Walking across campus at night? Start a safety timer. If you don't check in before it expires, security is immediately dispatched to your route!</p>
+            <p class="pane-subtitle">Walking across campus at night? Set a safety countdown. If you don't check in safely before it expires, security is immediately alerted to your route!</p>
           </div>
         </div>
 
         <div class="escort-layout">
           <div class="escort-setup-card" id="escortSetupView">
             <h2>🚶 Configure Night Walk</h2>
-            <p>Set your destination and estimated travel time. We'll hold a standby check-in for you.</p>
+            <p>Select your destination and travel duration. We'll hold a standby check-in for you.</p>
 
             <div class="form-group">
-              <label for="escortOrigin">Starting From</label>
+              <label>Popular Campus Preset Routes</label>
+              <div class="route-presets">
+                <button type="button" class="preset-chip" onclick="setEscortRoute('Central Library', 'Hostel Block 8')">📚 Library → Hostel 8</button>
+                <button type="button" class="preset-chip" onclick="setEscortRoute('Deshpande Auditorium', 'Main Gate')">🎭 Auditorium → Main Gate</button>
+                <button type="button" class="preset-chip" onclick="setEscortRoute('Central Canteen', 'Girls Hostel')">☕ Canteen → Girls Hostel</button>
+                <button type="button" class="preset-chip" onclick="setEscortRoute('Mechanical Dept', 'Hostel Circle')">⚙️ Mechanical → Hostel Circle</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="escortOrigin">Starting Location</label>
               <input type="text" id="escortOrigin" value="Central Library (Ground Floor)" placeholder="e.g. Science Complex">
             </div>
 
             <div class="form-group">
               <label for="escortDestination">Destination</label>
-              <input type="text" id="escortDestination" value="Hostel Block C, Room 312" placeholder="e.g. East Campus Dorms">
+              <input type="text" id="escortDestination" value="Senior Hostel 8, Room 214" placeholder="e.g. East Campus Dorms">
             </div>
 
             <div class="form-group">
@@ -351,26 +505,126 @@
             </div>
 
             <div class="escort-route-badge">
-              <span id="escortRouteText">Central Library → Hostel Block C</span>
+              <span id="escortRouteText">Central Library → Hostel Block 8</span>
             </div>
 
             <p class="escort-notice">Security officers are monitoring this session. When you arrive safely, tap below.</p>
 
             <div class="escort-actions">
               <button id="arrivedSafeBtn" class="btn-arrived-safe">✅ I Have Arrived Safely</button>
-              <button id="escortEmergencyBtn" class="btn-escort-emergency">🚨 Emergency: Alert Now</button>
+              <button id="escortEmergencyBtn" class="btn-escort-emergency">🚨 Emergency: Alert Security Now</button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- TAB 5: ANALYTICS -->
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 6: EMERGENCY HELPLINES & CONTACTS
+           ═════════════════════════════════════════════════════════ -->
+      <div id="contactsTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Campus Emergency Helplines & Contacts</h1>
+            <p class="pane-subtitle">24×7 Rapid response hotlines across BIT Sindri and personal emergency contact management.</p>
+          </div>
+          <button id="openAddContactBtn" class="btn-primary">➕ Add Personal Contact</button>
+        </div>
+
+        <div class="contacts-layout">
+          <!-- Official Campus Hotlines -->
+          <div class="official-contacts-card">
+            <h2 class="card-title">🏛️ Official BIT Sindri Helplines</h2>
+            <p class="card-desc">Direct line to campus safety and municipal emergency responders.</p>
+
+            <div class="helplines-grid">
+              <div class="helpline-card">
+                <div class="helpline-icon">👮‍♂️</div>
+                <div class="helpline-body">
+                  <div class="helpline-name">BIT Security Control Room</div>
+                  <div class="helpline-role">24×7 Main Gate Control Post & Patrol Unit</div>
+                  <div class="helpline-meta">📍 Main Gate · ⏰ Always Staffed</div>
+                </div>
+                <div class="helpline-actions">
+                  <a href="tel:+913262350495" class="btn-call">📞 Call Now</a>
+                  <button class="btn-copy" onclick="copyText('+913262350495', 'Security phone copied')">📋 Copy</button>
+                </div>
+              </div>
+
+              <div class="helpline-card">
+                <div class="helpline-icon">🚑</div>
+                <div class="helpline-body">
+                  <div class="helpline-name">Campus Dispensary & Ambulance</div>
+                  <div class="helpline-role">On-Duty Doctor & Emergency Transport</div>
+                  <div class="helpline-meta">📍 Hostel Circle · ⏰ 24×7 Emergency</div>
+                </div>
+                <div class="helpline-actions">
+                  <a href="tel:+919431123456" class="btn-call">📞 Call Now</a>
+                  <button class="btn-copy" onclick="copyText('+919431123456', 'Dispensary phone copied')">📋 Copy</button>
+                </div>
+              </div>
+
+              <div class="helpline-card">
+                <div class="helpline-icon">🛡️</div>
+                <div class="helpline-body">
+                  <div class="helpline-name">Women's Grievance & Anti-Ragging Cell</div>
+                  <div class="helpline-role">Confidential Student Redressal & Safety</div>
+                  <div class="helpline-meta">📍 Admin Block · ⏰ 24×7 Toll-Free</div>
+                </div>
+                <div class="helpline-actions">
+                  <a href="tel:+9118001805522" class="btn-call">📞 Call Now</a>
+                  <button class="btn-copy" onclick="copyText('18001805522', 'Anti-Ragging phone copied')">📋 Copy</button>
+                </div>
+              </div>
+
+              <div class="helpline-card">
+                <div class="helpline-icon">🚓</div>
+                <div class="helpline-body">
+                  <div class="helpline-name">Sindri Police Station</div>
+                  <div class="helpline-role">Local Law Enforcement Jurisdiction</div>
+                  <div class="helpline-meta">📍 Sindri Town (~1.2 km) · ⏰ 24×7 Emergency</div>
+                </div>
+                <div class="helpline-actions">
+                  <a href="tel:+913262381222" class="btn-call">📞 Call Now</a>
+                  <button class="btn-copy" onclick="copyText('+913262381222', 'Police phone copied')">📋 Copy</button>
+                </div>
+              </div>
+
+              <div class="helpline-card">
+                <div class="helpline-icon">🚨</div>
+                <div class="helpline-body">
+                  <div class="helpline-name">National Emergency Service (ERSS)</div>
+                  <div class="helpline-role">Pan-India Police, Fire & Medical Response</div>
+                  <div class="helpline-meta">📍 Unified Dispatch · ⏰ Toll-Free 112</div>
+                </div>
+                <div class="helpline-actions">
+                  <a href="tel:112" class="btn-call">📞 Call 112</a>
+                  <button class="btn-copy" onclick="copyText('112', 'ERSS 112 copied')">📋 Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Personal Emergency Contacts -->
+          <div class="personal-contacts-card">
+            <h2 class="card-title">📱 Personal Emergency Contacts</h2>
+            <p class="card-desc">During an SOS, your location link is generated for these trusted numbers.</p>
+            <div id="personalContactsList" class="personal-contacts-list">
+              <div class="loading-spinner-wrap"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 7: INTELLIGENCE & ANALYTICS
+           ═════════════════════════════════════════════════════════ -->
       <div id="analyticsTab" class="tab-pane">
         <div class="pane-header">
           <div>
             <h1 class="pane-title">Campus Safety Intelligence & Metrics</h1>
             <p class="pane-subtitle">Aggregated incident metrics, 7-day trend analysis, and resolution velocity computed from live database records.</p>
           </div>
+          <button id="refreshAnalyticsBtn" class="btn-secondary">🔄 Refresh Metrics</button>
         </div>
 
         <div class="metrics-grid">
@@ -398,24 +652,35 @@
 
         <div class="analytics-detail-grid">
           <div class="analytics-chart-card">
-            <h3>7-Day Incident Trend</h3>
+            <h3>7-Day Incident Trend & SOS Distribution</h3>
             <div id="trendChartContainer" class="bar-chart-container"></div>
           </div>
           <div class="analytics-chart-card">
-            <h3>Incidents by Category</h3>
+            <h3>Incidents by Category Breakdown</h3>
             <div id="categoryBreakdownContainer" class="breakdown-list"></div>
           </div>
         </div>
       </div>
 
-      <!-- TAB 6: BROADCASTS & ANNOUNCEMENTS -->
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 8: BROADCASTS & ANNOUNCEMENTS
+           ═════════════════════════════════════════════════════════ -->
       <div id="announcementsTab" class="tab-pane">
         <div class="pane-header">
           <div>
             <h1 class="pane-title">Campus Safety Broadcasts</h1>
-            <p class="pane-subtitle">Campus-wide safety alerts, emergency notifications, and operational directives.</p>
+            <p class="pane-subtitle">Campus-wide safety alerts, weather warnings, and official administrative directives.</p>
           </div>
           <button id="openAnnouncementModalBtn" class="btn-primary">➕ Publish Announcement</button>
+        </div>
+
+        <div class="toolbar-card">
+          <div class="filter-chips-row" id="annFilterChips">
+            <button class="chip active" data-sev="">All Broadcasts</button>
+            <button class="chip" data-sev="CRITICAL">🚨 Critical</button>
+            <button class="chip" data-sev="WARNING">⚠️ Warning</button>
+            <button class="chip" data-sev="INFO">ℹ️ Info</button>
+          </div>
         </div>
 
         <div id="announcementsList" class="announcements-grid">
@@ -423,8 +688,169 @@
         </div>
       </div>
 
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 9: SAFETY PROTOCOLS & EMERGENCY SOPS
+           ═════════════════════════════════════════════════════════ -->
+      <div id="protocolsTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Standard Operating Procedures (SOPs)</h1>
+            <p class="pane-subtitle">Official BIT Sindri action checklists for immediate execution during campus emergencies.</p>
+          </div>
+        </div>
+
+        <div class="protocols-grid" id="protocolsGrid">
+          <!-- Dynamically populated or rich cards -->
+        </div>
+      </div>
+
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 10: CAMPUS USER ROSTER (ADMIN & STAFF)
+           ═════════════════════════════════════════════════════════ -->
+      <div id="usersTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Campus Directory & User Roster</h1>
+            <p class="pane-subtitle">Authorized student, responder, and administrative accounts with active safety credentials.</p>
+          </div>
+          <button id="refreshUsersBtn" class="btn-secondary">🔄 Refresh Roster</button>
+        </div>
+
+        <div class="toolbar-card">
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="userSearchInput" placeholder="Search by name or email…" autocomplete="off">
+          </div>
+          <div class="filter-group">
+            <select id="userRoleFilter" class="filter-select">
+              <option value="">All Roles</option>
+              <option value="STUDENT">Students</option>
+              <option value="RESPONDER">Responders</option>
+              <option value="ADMIN">Admins</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email Address</th>
+                <th>Role</th>
+                <th>Safety Status</th>
+                <th>Registered Date</th>
+              </tr>
+            </thead>
+            <tbody id="userTableBody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═════════════════════════════════════════════════════════
+           TAB 11: ACCOUNT & SYSTEM SETTINGS
+           ═════════════════════════════════════════════════════════ -->
+      <div id="settingsTab" class="tab-pane">
+        <div class="pane-header">
+          <div>
+            <h1 class="pane-title">Account & System Configuration</h1>
+            <p class="pane-subtitle">Manage campus identity credentials, security parameters, and notification channels.</p>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <!-- Profile Card -->
+          <div class="settings-card">
+            <h3>👤 Active Account Profile</h3>
+            <div class="profile-details-list">
+              <div class="prof-row">
+                <span class="prof-lbl">Full Name:</span>
+                <span class="prof-val" id="settingsUserName">-</span>
+              </div>
+              <div class="prof-row">
+                <span class="prof-lbl">Email:</span>
+                <span class="prof-val" id="settingsUserEmail">-</span>
+              </div>
+              <div class="prof-row">
+                <span class="prof-lbl">Campus Role:</span>
+                <span class="prof-val" id="settingsUserRole">-</span>
+              </div>
+              <div class="prof-row">
+                <span class="prof-lbl">Institution:</span>
+                <span class="prof-val">BIT Sindri, Dhanbad (Jharkhand)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Password Update Form -->
+          <div class="settings-card">
+            <h3>🔒 Change Password</h3>
+            <form id="changePasswordForm" class="form-vertical">
+              <div class="form-group">
+                <label for="currentPasswordInput">Current Password</label>
+                <input type="password" id="currentPasswordInput" required placeholder="Enter current password">
+              </div>
+              <div class="form-group">
+                <label for="newPasswordInput">New Password (8+ chars, letter & number)</label>
+                <input type="password" id="newPasswordInput" required minlength="8" placeholder="Enter new password">
+              </div>
+              <div class="form-group">
+                <label for="confirmPasswordInput">Confirm New Password</label>
+                <input type="password" id="confirmPasswordInput" required minlength="8" placeholder="Repeat new password">
+              </div>
+              <button type="submit" class="btn-primary">Update Password</button>
+            </form>
+          </div>
+
+          <!-- Notification & Audio Preferences -->
+          <div class="settings-card">
+            <h3>🔔 Alert Preferences</h3>
+            <div class="pref-toggle-list">
+              <label class="toggle-row">
+                <div>
+                  <strong>Audible Siren Chime</strong>
+                  <p>Play emergency sound cues when high-priority alerts are received.</p>
+                </div>
+                <input type="checkbox" id="prefChime" checked class="switch">
+              </label>
+              <label class="toggle-row">
+                <div>
+                  <strong>Critical SOS Push Notifications</strong>
+                  <p>Immediate broadcast for campus panic alerts.</p>
+                </div>
+                <input type="checkbox" id="prefSos" checked class="switch">
+              </label>
+              <label class="toggle-row">
+                <div>
+                  <strong>Incident Resolution Updates</strong>
+                  <p>Notify when your filed reports advance to next stage.</p>
+                </div>
+                <input type="checkbox" id="prefUpdates" checked class="switch">
+              </label>
+            </div>
+          </div>
+
+          <!-- System Telemetry Diagnostics -->
+          <div class="settings-card">
+            <h3>⚡ System Diagnostics</h3>
+            <div class="diag-list">
+              <div class="diag-row"><span>Backend Engine:</span> <strong>Node.js / Express v4.21</strong></div>
+              <div class="diag-row"><span>Database Connection:</span> <strong style="color: var(--success);">Neon PostgreSQL (Active)</strong></div>
+              <div class="diag-row"><span>Web Audio Synthesizer:</span> <strong style="color: var(--primary);">WebAudio 44.1kHz Ready</strong></div>
+              <div class="diag-row"><span>Security Standard:</span> <strong>OWASP ASVS Level 2 Hardened</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </section>
   </main>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       MODALS & DIALOGS
+       ═══════════════════════════════════════════════════════════ -->
 
   <!-- Incident Detail & Status Transition Modal -->
   <div id="incidentModal" class="modal-backdrop hidden">
@@ -438,6 +864,17 @@
       </div>
 
       <div class="modal-body">
+        <!-- Visual Lifecycle Progress Stepper -->
+        <div class="stepper-wrap" id="modalStepper">
+          <div class="step-node" id="stepNew"><span class="step-icon">1</span><span class="step-lbl">Reported</span></div>
+          <div class="step-bar" id="bar1"></div>
+          <div class="step-node" id="stepAck"><span class="step-icon">2</span><span class="step-lbl">Acknowledged</span></div>
+          <div class="step-bar" id="bar2"></div>
+          <div class="step-node" id="stepProg"><span class="step-icon">3</span><span class="step-lbl">In Progress</span></div>
+          <div class="step-bar" id="bar3"></div>
+          <div class="step-node" id="stepRes"><span class="step-icon">4</span><span class="step-lbl">Resolved</span></div>
+        </div>
+
         <div class="modal-info-row">
           <div><strong>Category:</strong> <span id="modalCategory">-</span></div>
           <div><strong>Reported By:</strong> <span id="modalReporter">-</span></div>
@@ -450,7 +887,7 @@
         </div>
 
         <div class="modal-desc-box">
-          <h4>Description</h4>
+          <h4>Detailed Incident Description</h4>
           <p id="modalDescription">-</p>
         </div>
 
@@ -459,12 +896,18 @@
           <img id="modalPhotoImage" src="" alt="Evidence photo" class="evidence-img">
         </div>
 
+        <!-- Category Protocol Guidance Box -->
+        <div class="modal-protocol-guidance" id="modalProtocolGuidance">
+          <h4>🛡️ Active Campus Response Directive</h4>
+          <p id="modalGuidanceText">Follow responder instructions. Keep access lanes clear for emergency vehicles.</p>
+        </div>
+
         <!-- Responder Action Controls -->
         <div id="responderActionBlock" class="responder-actions-block">
-          <h4>Update Status (Staff Action)</h4>
+          <h4>Update Incident Status (Authorized Action)</h4>
           <div class="form-group">
-            <label for="statusNotesInput">Responder Notes / Action Taken:</label>
-            <input type="text" id="statusNotesInput" placeholder="e.g. Officer dispatched to Location, perimeter secured">
+            <label for="statusNotesInput">Responder Notes / Operational Dispatch Log:</label>
+            <input type="text" id="statusNotesInput" placeholder="e.g. Campus patrol dispatched to location, perimeter secured">
           </div>
           <div class="action-buttons-row">
             <button id="btnAcknowledge" class="btn-action btn-ack hidden">✓ Acknowledge</button>
@@ -486,16 +929,16 @@
   <div id="announcementModal" class="modal-backdrop hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <h2 class="modal-title">📢 New Safety Announcement</h2>
+        <h2 class="modal-title">📢 New Campus Safety Announcement</h2>
         <button id="closeAnnouncementModalBtn" class="modal-close">&times;</button>
       </div>
       <form id="newAnnouncementForm" class="modal-body">
         <div class="form-group">
           <label for="annTitle">Title (5–140 chars)</label>
-          <input type="text" id="annTitle" required minlength="5" maxlength="140" placeholder="e.g. Severe Weather Warning: Strong Winds">
+          <input type="text" id="annTitle" required minlength="5" maxlength="140" placeholder="e.g. Scheduled Fire Drill: Friday 11:00 AM">
         </div>
         <div class="form-group">
-          <label for="annSeverity">Severity</label>
+          <label for="annSeverity">Severity Level</label>
           <select id="annSeverity">
             <option value="INFO">ℹ️ INFO (Informational)</option>
             <option value="WARNING" selected>⚠️ WARNING (Caution required)</option>
@@ -503,10 +946,35 @@
           </select>
         </div>
         <div class="form-group">
-          <label for="annMessage">Message (10–2000 chars)</label>
-          <textarea id="annMessage" rows="4" required minlength="10" maxlength="2000" placeholder="State clear instructions for campus students and faculty…"></textarea>
+          <label for="annMessage">Message & Directive (10–2000 chars)</label>
+          <textarea id="annMessage" rows="4" required minlength="10" maxlength="2000" placeholder="State clear instructions, evacuation rally points and emergency contacts…"></textarea>
         </div>
-        <button type="submit" class="btn-primary">Broadcast Announcement</button>
+        <button type="submit" class="btn-primary">Broadcast to Campus</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Personal Contact Modal -->
+  <div id="addContactModal" class="modal-backdrop hidden">
+    <div class="modal-card modal-sm">
+      <div class="modal-header">
+        <h2 class="modal-title">➕ Add Trusted Emergency Contact</h2>
+        <button id="closeAddContactModalBtn" class="modal-close">&times;</button>
+      </div>
+      <form id="newContactForm" class="modal-body">
+        <div class="form-group">
+          <label for="contactNameInput">Name</label>
+          <input type="text" id="contactNameInput" required placeholder="e.g. Mom / Roommate Rahul">
+        </div>
+        <div class="form-group">
+          <label for="contactPhoneInput">Phone (+91 or 10 digits)</label>
+          <input type="tel" id="contactPhoneInput" required placeholder="+91 98765 43210">
+        </div>
+        <div class="form-group">
+          <label for="contactRelationInput">Relationship (optional)</label>
+          <input type="text" id="contactRelationInput" placeholder="e.g. Family / Roommate / Warden">
+        </div>
+        <button type="submit" class="btn-primary">Save Contact</button>
       </form>
     </div>
   </div>

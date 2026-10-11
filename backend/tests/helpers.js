@@ -7,6 +7,9 @@ const app = createApp();
 
 /** Deletes all rows in FK-safe order. Called between tests. */
 async function resetDb() {
+  await prisma.dispatchLog.deleteMany();
+  await prisma.deviceSession.deleteMany();
+  await prisma.verificationOtp.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.checkIn.deleteMany();
   await prisma.emergencyContact.deleteMany();
@@ -20,8 +23,18 @@ async function resetDb() {
   await prisma.safetyPoint.deleteMany();
 }
 
-async function createUser({ name = 'Test User', email, password = 'Password123', role = 'STUDENT' }) {
-  return prisma.user.create({ data: { name, email, passwordHash: await hashPassword(password), role } });
+async function createUser({ name = 'Test User', email, password = 'Password123', role = 'STUDENT', isVerified = true }) {
+  return prisma.user.create({
+    data: {
+      name,
+      email,
+      passwordHash: await hashPassword(password),
+      role,
+      isVerified,
+      emailVerified: isVerified,
+      phoneVerified: isVerified,
+    },
+  });
 }
 
 async function registerAndLogin({ name, email, password }) {

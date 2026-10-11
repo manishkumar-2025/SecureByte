@@ -55,19 +55,19 @@ async function main() {
     });
   }
 
-  // Campus safety map points (ISM Dhanbad area, demo coordinates).
+  // Campus safety map points (BIT Sindri campus coordinates).
   if ((await prisma.safetyPoint.count()) === 0) {
     await prisma.safetyPoint.createMany({
       data: [
-        { name: 'Main Gate Security Office', category: 'SECURITY_OFFICE', latitude: 23.8144, longitude: 86.4407, description: '24×7 staffed security control room, next to the main gate.' },
-        { name: 'Hostel Circle Security Post', category: 'SECURITY_OFFICE', latitude: 23.8169, longitude: 86.4378, description: 'Secondary security post serving the hostel block.' },
-        { name: 'Academic Block A — East Exit', category: 'EMERGENCY_EXIT', latitude: 23.8151, longitude: 86.4415, description: 'Marked emergency exit with assembly point outside.' },
-        { name: 'Library West Emergency Exit', category: 'EMERGENCY_EXIT', latitude: 23.8138, longitude: 86.4395, description: 'Ground-floor west fire exit, keep clear at all times.' },
-        { name: 'Canteen Fire Extinguisher Panel', category: 'FIRE_EXTINGUISHER', latitude: 23.8147, longitude: 86.4411, description: 'ABC extinguishers + fire blanket near the kitchen.' },
-        { name: 'Workshop Fire Point', category: 'FIRE_EXTINGUISHER', latitude: 23.8160, longitude: 86.4388, description: 'CO₂ extinguishers by the machine-shop entrance.' },
-        { name: 'Health Centre — First Aid', category: 'FIRST_AID', latitude: 23.8155, longitude: 86.4398, description: 'Campus health centre, staffed 8 AM – 8 PM.' },
-        { name: 'Sports Ground AED Cabinet', category: 'AED', latitude: 23.8172, longitude: 86.4402, description: 'Defibrillator in the pavilion, unlocked during events.' },
-        { name: 'Auditorium Shelter Area', category: 'SHELTER', latitude: 23.8134, longitude: 86.4418, description: 'Designated severe-weather shelter (basement hall).' },
+        { name: 'BIT Main Gate Security Office', category: 'SECURITY_OFFICE', latitude: 23.6525, longitude: 86.4731, description: '24×7 staffed security control room, next to the main gate.' },
+        { name: 'Hostel Circle Security Post', category: 'SECURITY_OFFICE', latitude: 23.6582, longitude: 86.4715, description: 'Secondary security post serving the senior boys hostel block.' },
+        { name: 'Administrative Block — East Exit', category: 'EMERGENCY_EXIT', latitude: 23.6548, longitude: 86.4738, description: 'Marked emergency exit with assembly point outside.' },
+        { name: 'Central Library Emergency Exit', category: 'EMERGENCY_EXIT', latitude: 23.6558, longitude: 86.4740, description: 'Ground-floor west fire exit, keep clear at all times.' },
+        { name: 'Central Canteen Fire Extinguisher', category: 'FIRE_EXTINGUISHER', latitude: 23.6543, longitude: 86.4755, description: 'ABC extinguishers + fire blanket near the kitchen.' },
+        { name: 'Mechanical Workshop Fire Point', category: 'FIRE_EXTINGUISHER', latitude: 23.6538, longitude: 86.4748, description: 'CO₂ extinguishers by the machine-shop entrance.' },
+        { name: 'BIT Dispensary — First Aid Unit', category: 'FIRST_AID', latitude: 23.6565, longitude: 86.4728, description: 'Campus health centre, staffed 24×7 for emergencies.' },
+        { name: 'Gymkhana Sports Pavilion AED', category: 'AED', latitude: 23.6568, longitude: 86.4758, description: 'Defibrillator in the pavilion, unlocked during events.' },
+        { name: 'Deshpande Auditorium Shelter Area', category: 'SHELTER', latitude: 23.6535, longitude: 86.4735, description: 'Designated severe-weather shelter (basement hall).' },
       ],
     });
   }

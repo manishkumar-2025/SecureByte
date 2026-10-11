@@ -11,11 +11,14 @@ const { unauthorized, forbidden } = require('../utils/errors');
 async function requireAuth(req, res, next) {
   try {
     const header = req.headers.authorization || '';
-    if (!header.startsWith('Bearer ')) {
+    let token = '';
+    if (header.startsWith('Bearer ')) {
+      token = header.slice(7).trim();
+    } else if (typeof req.query?.token === 'string' && req.query.token.trim()) {
+      token = req.query.token.trim();
+    } else {
       throw unauthorized('Authentication required. Please sign in.', 'TOKEN_MISSING');
     }
-
-    const token = header.slice(7).trim();
     let payload;
     try {
       payload = jwt.verify(token, env.jwtSecret); // throws on bad signature / expiry

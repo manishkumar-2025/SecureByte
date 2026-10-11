@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+.env
+.pg
+.pg_bin.zip
+uploads/*
+!uploads/.gitkeep
+tests
+coverage

@@ -6,8 +6,10 @@ const {
   createIncident,
   listMyIncidents,
   getIncidentById,
+  updateIncident,
   uploadIncidentPhoto,
   deleteIncidentPhoto,
+  getIncidentPhoto,
 } = require('../controllers/incidentController');
 
 const router = require('express').Router();
@@ -31,11 +33,14 @@ router.post(
 // NOTE: /my must be declared before /:id so it is not swallowed as an id.
 router.get('/my', listMyIncidents);
 
-// Photo evidence — multipart/form-data, field name "photo".
-// Ownership is re-checked inside the controller.
+// Photo evidence — protected & IDOR checked.
+router.get('/:id/photo', getIncidentPhoto);
 router.post('/:id/photo', uploadSinglePhoto('photo'), uploadIncidentPhoto);
 router.delete('/:id/photo', deleteIncidentPhoto);
 
 router.get('/:id', getIncidentById);
+
+// PATCH — owner edits a NEW (unacknowledged) incident's title/description/category.
+router.patch('/:id', updateIncident);
 
 module.exports = router;

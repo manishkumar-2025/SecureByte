@@ -47,6 +47,27 @@ enum NotificationType {
   CHECK_IN_ALERT
   ANNOUNCEMENT
   SYSTEM
+  SECURITY_ALERT
+  ESCALATION_ALERT
+}
+
+enum OtpChannel {
+  EMAIL
+  SMS
+}
+
+enum DispatchChannel {
+  SMS
+  PUSH
+  EMAIL
+}
+
+enum DispatchStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  ACKNOWLEDGED
 }
 
 enum IncidentCategory {
@@ -85,10 +106,14 @@ model User {
   id               String    @id @default(uuid())
   name             String
   email            String    @unique
+  phone            String?
   passwordHash     String
   role             Role      @default(STUDENT)
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
+  emailVerified    Boolean   @default(false)
+  phoneVerified    Boolean   @default(false)
+  isVerified       Boolean   @default(false)
   // Per-user notification preferences. Kept as JSON so the mobile app can
   // evolve the shape without a migration for every new toggle.
   // Shape: { push, sosAlerts, statusUpdates, announcements }
@@ -104,6 +129,9 @@ model User {
   emergencyContacts EmergencyContact[]
   checkIns          CheckIn[]
   notifications     Notification[]
+  verificationOtps  VerificationOtp[]
+  deviceSessions    DeviceSession[]
+  dispatchLogs      DispatchLog[]
 
   @@index([role])
   @@map("users")
@@ -289,3 +317,72 @@ model Notification {
   @@index([userId, readAt])
   @@map("notifications")
 }
+
+/// Verification OTPs for dual email & phone verification
+model VerificationOtp {
+  id          String     @id @default(uuid())
+  userId      String
+  target      String
+  channel     OtpChannel
+  codeHash    String
+  attempts    Int        @default(0)
+  maxAttempts Int        @default(5)
+  expiresAt   DateTime
+  resendAfter DateTime
+  verifiedAt  DateTime?
+  createdAt   DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, channel])
+  @@index([target])
+  @@map("verification_otps")
+}
+
+/// Device tracking for secure login and anomaly detection
+model DeviceSession {
+  id               String    @id @default(uuid())
+  userId           String
+  deviceIdentifier String
+  userAgent        String?
+  ipAddress        String?
+  lastSeenAt       DateTime  @default(now())
+  isTrusted        Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceIdentifier])
+  @@index([userId])
+  @@map("device_sessions")
+}
+
+/// Dispatch audit logs for SMS, Push, and Email alerts with idempotency tracking
+model DispatchLog {
+  id             String           @id @default(uuid())
+  incidentId     String?
+  userId         String?
+  recipient      String
+  channel        DispatchChannel
+  priority       IncidentPriority @default(CRITICAL)
+  status         DispatchStatus   @default(QUEUED)
+  idempotencyKey String?          @unique
+  attempts       Int              @default(1)
+  provider       String?
+  providerRef    String?
+  responsePayload Json?
+  errorMessage   String?
+  escalated      Boolean          @default(false)
+  sentAt         DateTime?
+  acknowledgedAt DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([incidentId])
+  @@index([status])
+  @@index([recipient])
+  @@map("dispatch_logs")
+}
+

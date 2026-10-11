@@ -1,6 +1,7 @@
 const { validateBody, rules } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { CHECK_IN_STATUSES } = require('../utils/constants');
+const { checkInLimiter } = require('../middleware/rateLimiters');
 const { createCheckIn, listMyCheckIns } = require('../controllers/checkInController');
 
 const router = require('express').Router();
@@ -17,6 +18,7 @@ const optionalNumber = (label) => (value) => {
 
 router.post(
   '/',
+  checkInLimiter,
   validateBody({
     status: rules.oneOf({ values: CHECK_IN_STATUSES, label: 'Check-in status' }),
     note: rules.string({ label: 'Note', min: 1, max: 500, required: false }),

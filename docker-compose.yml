@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: securebyte-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: campusshield
+      POSTGRES_PASSWORD: campusshield_secure_db_pass
+      POSTGRES_DB: campusshield_prod
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campusshield -d campusshield_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: securebyte-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://campusshield:campusshield_secure_db_pass@postgres:5432/campusshield_prod?schema=public
+      JWT_SECRET: ${JWT_SECRET:-generate_strong_production_jwt_secret_min_32_chars}
+      JWT_EXPIRES_IN: 12h
+      BCRYPT_ROUNDS: 12
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      RATE_LIMIT_GLOBAL_MAX: 300
+      RATE_LIMIT_GLOBAL_WINDOW_MINUTES: 5
+      RATE_LIMIT_LOGIN_MAX: 10
+      RATE_LIMIT_LOGIN_WINDOW_MINUTES: 15
+      RATE_LIMIT_REGISTER_MAX: 5
+      RATE_LIMIT_REGISTER_WINDOW_MINUTES: 60
+      RATE_LIMIT_INCIDENT_MAX: 6
+      RATE_LIMIT_INCIDENT_WINDOW_MINUTES: 10
+      DUPLICATE_WINDOW_SECONDS: 30
+      LOGIN_MAX_FAILED: 5
+      LOCKOUT_MINUTES: 15
+    ports:
+      - "4000:4000"
+    volumes:
+      - uploads_data:/app/uploads
+
+volumes:
+  pgdata:
+  uploads_data:

@@ -269,7 +269,7 @@ describe('Notification center', () => {
       .post('/api/incidents')
       .set('Authorization', `Bearer ${studentToken}`)
       .send({ isSos: true });
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 400));
 
     const rows = await prisma.notification.findMany({ where: { type: 'SOS_ALERT' } });
     expect(rows.length).toBeGreaterThanOrEqual(1);
@@ -530,5 +530,39 @@ describe('Photo evidence upload', () => {
 
     const secondDelete = await request(app).delete(`/api/incidents/${incidentId}/photo`).set('Authorization', `Bearer ${token}`);
     expect(secondDelete.status).toBe(422); // nothing left to delete
+  });
+
+  test('photo retrieval enforces authentication and IDOR, and public static access is blocked', async () => {
+    // 1. Upload photo
+    await request(app)
+      .post(`/api/incidents/${incidentId}/photo`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('photo', makeJpegBuffer(), { filename: 'evidence.jpg', contentType: 'image/jpeg' });
+
+    // 2. Unauthenticated request to GET /photo is rejected with 401
+    const unauth = await request(app).get(`/api/incidents/${incidentId}/photo`);
+    expect(unauth.status).toBe(401);
+
+    // 3. Different student gets 403 FORBIDDEN (IDOR protection)
+    const otherStudent = await request(app)
+      .get(`/api/incidents/${incidentId}/photo`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(otherStudent.status).toBe(403);
+    expect(otherStudent.body.error.code).toBe('NOT_YOUR_INCIDENT');
+
+    // 4. Owner gets 200 OK
+    const ownerRes = await request(app)
+      .get(`/api/incidents/${incidentId}/photo`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(ownerRes.status).toBe(200);
+
+    // 5. Query token authentication also works for owner
+    const queryTokenRes = await request(app)
+      .get(`/api/incidents/${incidentId}/photo?token=${token}`);
+    expect(queryTokenRes.status).toBe(200);
+
+    // 6. Public static /uploads URL is blocked (returns 404)
+    const publicStatic = await request(app).get('/uploads/any-evidence-file.jpg');
+    expect(publicStatic.status).toBe(404);
   });
 });

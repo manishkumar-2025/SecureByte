@@ -31,6 +31,43 @@ if (jwtSecret.length < 32) {
   process.exit(1);
 }
 
+// Production safety validations
+if (process.env.NODE_ENV === 'production') {
+  const isDefaultSecret = jwtSecret.includes('replace_with_a_random_secret') ||
+    jwtSecret.includes('campusshield-2026!');
+  if (isDefaultSecret) {
+    console.error('\n[SECURITY ERROR] Default demo JWT_SECRET detected in production!');
+    console.error('[SECURITY ERROR] Generate a fresh unique 48-byte secret before running in production.\n');
+    process.exit(1);
+  }
+
+  if (process.env.CORS_ORIGIN === '*' || !process.env.CORS_ORIGIN) {
+    console.warn('\n[SECURITY WARNING] Wildcard CORS ("*") is enabled in production.');
+    console.warn('[SECURITY WARNING] Restrict CORS_ORIGIN to your authorized campus domain(s).\n');
+  }
+
+  if (process.env.RESPONDER_SETUP_CODE === 'SECURE_RESPONDER_2026_CODE') {
+    console.warn('\n[SECURITY WARNING] The demo RESPONDER_SETUP_CODE is active in production!');
+    console.warn('[SECURITY WARNING] Leave RESPONDER_SETUP_CODE empty to disable the setup endpoint in production.\n');
+  }
+
+  const hasTwilio = Boolean(
+    process.env.TWILIO_ACCOUNT_SID &&
+    process.env.TWILIO_AUTH_TOKEN &&
+    process.env.TWILIO_PHONE_NUMBER
+  );
+  if (!hasTwilio) {
+    console.warn('\n[TELEPHONY WARNING] Twilio credentials are not configured in production mode.');
+    console.warn('[TELEPHONY WARNING] Outbound SMS alerts will record observable failures in dispatch logs rather than reporting fake delivery.\n');
+  }
+
+  const hasEmail = Boolean(process.env.SMTP_HOST || process.env.SENDGRID_API_KEY);
+  if (!hasEmail) {
+    console.warn('\n[EMAIL WARNING] Email provider credentials are not configured in production mode.');
+    console.warn('[EMAIL WARNING] Outbound email dispatches will fail observably.\n');
+  }
+}
+
 const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   isProduction: process.env.NODE_ENV === 'production',
@@ -60,6 +97,19 @@ const env = {
   refreshTokenDays: positiveInt('REFRESH_TOKEN_DAYS', 30),
   // Set PUSH_DISABLED=true to turn off outbound push (e.g. CI).
   pushDisabled: String(process.env.PUSH_DISABLED || '').toLowerCase() === 'true',
+  // Dual Email and Mobile verification
+  requireVerification: process.env.REQUIRE_VERIFICATION === 'true',
+  otpExpiryMinutes: positiveInt('OTP_EXPIRY_MINUTES', 10),
+  otpCooldownSeconds: positiveInt('OTP_COOLDOWN_SECONDS', 60),
+  otpMaxAttempts: positiveInt('OTP_MAX_ATTEMPTS', 5),
+  // 60-second automatic escalation
+  escalationDelaySeconds: positiveInt('ESCALATION_DELAY_SECONDS', 60),
+  // Telephony credentials (optional)
+  twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
+  twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
+  twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER || '',
+  hasSmsProvider: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER),
+  hasEmailProvider: Boolean(process.env.SMTP_HOST || process.env.SENDGRID_API_KEY),
 };
 
 module.exports = { env };

@@ -3,6 +3,8 @@ const { unprocessable, notFound, conflict } = require('../utils/errors');
 const { ALL_CATEGORIES, PRIORITIES, STATUSES, STATUS_TRANSITIONS } = require('../utils/constants');
 const { parsePagination } = require('../utils/pagination');
 const { notifyUsers, loadUser } = require('../lib/notify');
+const { cancelEscalation } = require('../services/escalationService');
+const { acknowledgeDispatch } = require('../services/dispatchService');
 
 // GET /api/responder/incidents — RESPONDER only. Full incident queue with
 // filters, free-text search (?q=) and a documented sort order: SOS alerts
@@ -107,6 +109,10 @@ async function updateIncidentStatus(req, res, next) {
         reporter: { select: { id: true, name: true } },
       },
     });
+
+    // Cancel 60-second escalation timer and acknowledge active dispatch logs
+    cancelEscalation(incidentId);
+    acknowledgeDispatch(incidentId, req.user.id).catch(() => {});
 
     // Notify the reporter: their report just moved forward. A Notification
     // row is always written (in-app center); push honours their prefs.

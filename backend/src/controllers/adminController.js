@@ -56,14 +56,25 @@ async function getAnalytics(req, res, next) {
     }
 
     // Average resolution time over resolved incidents (minutes, 1 dp).
-    // updatedAt is set when the RESOLVED transition happened.
+    // Uses direct database aggregation for high-scale performance with fallback.
     let avgResolutionMinutes = null;
-    if (resolvedRecent.length > 0) {
-      const totalMs = resolvedRecent.reduce(
-        (sum, r) => sum + (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()),
-        0
-      );
-      avgResolutionMinutes = Math.round((totalMs / resolvedRecent.length / 60000) * 10) / 10;
+    try {
+      const rawAvg = await prisma.$queryRaw`
+        SELECT AVG(EXTRACT(EPOCH FROM ("updatedAt" - "createdAt")) / 60) AS avg_min
+        FROM "incidents"
+        WHERE "status" = 'RESOLVED' AND "updatedAt" >= ${since30d}
+      `;
+      if (rawAvg && rawAvg[0] && rawAvg[0].avg_min != null) {
+        avgResolutionMinutes = Math.round(Number(rawAvg[0].avg_min) * 10) / 10;
+      }
+    } catch (e) {
+      if (resolvedRecent.length > 0) {
+        const totalMs = resolvedRecent.reduce(
+          (sum, r) => sum + (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()),
+          0
+        );
+        avgResolutionMinutes = Math.round((totalMs / resolvedRecent.length / 60000) * 10) / 10;
+      }
     }
 
     const statusCounts = {};

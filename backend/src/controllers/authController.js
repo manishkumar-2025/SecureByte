@@ -3,15 +3,21 @@ const { env } = require('../config/env');
 const { prisma } = require('../lib/prisma');
 const { signToken } = require('../utils/jwt');
 const { hashPassword, verifyPassword } = require('../utils/password');
-const { unauthorized, conflict, forbidden, unprocessable, locked } = require('../utils/errors');
+const { unauthorized, conflict, forbidden, unprocessable, locked, badRequest } = require('../utils/errors');
 const { readPrefs } = require('../lib/notify');
+const { sendOtp, verifyOtp } = require('../services/otpService');
+const { trackDeviceSession } = require('../services/deviceService');
 
 function safeUser(user) {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
+    phone: user.phone || null,
     role: user.role,
+    emailVerified: Boolean(user.emailVerified),
+    phoneVerified: Boolean(user.phoneVerified),
+    isVerified: Boolean(user.isVerified),
     createdAt: user.createdAt,
     // Prefs ride along with the profile so the app can render toggle
     // states without an extra round-trip.
@@ -83,6 +89,7 @@ async function rotateRefreshToken(raw) {
 async function register(req, res, next) {
   try {
     const { name, email, password } = req.validated;
+    const phone = req.body && req.body.phone ? String(req.body.phone).trim() : null;
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -90,9 +97,26 @@ async function register(req, res, next) {
     }
 
     const passwordHash = await hashPassword(password);
+    const requireVerif = env.requireVerification;
     const user = await prisma.user.create({
-      data: { name, email, passwordHash, role: 'STUDENT' },
+      data: {
+        name,
+        email,
+        phone,
+        passwordHash,
+        role: 'STUDENT',
+        isVerified: !requireVerif,
+        emailVerified: !requireVerif,
+        phoneVerified: !requireVerif,
+      },
     });
+
+    if (requireVerif) {
+      sendOtp({ userId: user.id, channel: 'EMAIL', target: user.email }).catch(() => {});
+      if (phone) {
+        sendOtp({ userId: user.id, channel: 'SMS', target: phone }).catch(() => {});
+      }
+    }
 
     const accessToken = signToken(user);
     const refreshToken = await issueRefreshToken(user.id);
@@ -113,12 +137,22 @@ async function login(req, res, next) {
     const { email, password } = req.validated;
     const user = await prisma.user.findUnique({ where: { email } });
 
-    if (user && user.lockedUntil && user.lockedUntil > new Date()) {
-      const minutes = Math.max(1, Math.ceil((user.lockedUntil - Date.now()) / 60000));
-      throw locked(
-        `Too many failed sign-in attempts. This account is locked for about ${minutes} more minute(s).`,
-        'ACCOUNT_LOCKED'
-      );
+    if (user && user.lockedUntil) {
+      if (user.lockedUntil > new Date()) {
+        const minutes = Math.max(1, Math.ceil((user.lockedUntil - Date.now()) / 60000));
+        throw locked(
+          `Too many failed sign-in attempts. This account is locked for about ${minutes} more minute(s).`,
+          'ACCOUNT_LOCKED'
+        );
+      } else {
+        // Lockout expired — reset the counter for a fresh cycle
+        user.failedLoginCount = 0;
+        user.lockedUntil = null;
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { failedLoginCount: 0, lockedUntil: null },
+        });
+      }
     }
 
     const ok = user ? await verifyPassword(password, user.passwordHash) : false;
@@ -144,9 +178,20 @@ async function login(req, res, next) {
       });
     }
 
+    // Non-blocking device session tracking for suspicious or new-device detection
+    trackDeviceSession(req, user.id).catch((err) => console.error('[device]', err.message));
+
     const accessToken = signToken(user);
     const refreshToken = await issueRefreshToken(user.id);
-    res.status(200).json({ success: true, data: { user: safeUser(user), accessToken, refreshToken } });
+    res.status(200).json({
+      success: true,
+      data: {
+        user: safeUser(user),
+        accessToken,
+        refreshToken,
+        requiresVerification: !user.isVerified,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -253,12 +298,79 @@ async function setupResponder(req, res, next) {
 
     const passwordHash = await hashPassword(password);
     const user = await prisma.user.create({
-      data: { name, email, passwordHash, role: 'RESPONDER' },
+      data: {
+        name,
+        email,
+        passwordHash,
+        role: 'RESPONDER',
+        isVerified: true,
+        emailVerified: true,
+        phoneVerified: true,
+      },
     });
 
     const accessToken = signToken(user);
     const refreshToken = await issueRefreshToken(user.id);
     res.status(201).json({ success: true, data: { user: safeUser(user), accessToken, refreshToken } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/send-otp — authenticated
+async function sendOtpEndpoint(req, res, next) {
+  try {
+    const { channel } = req.validated;
+    const upperChannel = String(channel).toUpperCase();
+    if (!['EMAIL', 'SMS'].includes(upperChannel)) {
+      throw unprocessable('Channel must be EMAIL or SMS.', 'INVALID_CHANNEL');
+    }
+
+    const target = req.validated.target || (upperChannel === 'EMAIL' ? req.user.email : req.user.phone);
+    if (!target) {
+      throw badRequest(`No ${upperChannel.toLowerCase()} target found. Please provide a destination ${upperChannel.toLowerCase()}.`, 'TARGET_REQUIRED');
+    }
+
+    const result = await sendOtp({ userId: req.user.id, channel: upperChannel, target });
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/verify-otp — authenticated
+async function verifyOtpEndpoint(req, res, next) {
+  try {
+    const { channel, code } = req.validated;
+    const upperChannel = String(channel).toUpperCase();
+    if (!['EMAIL', 'SMS'].includes(upperChannel)) {
+      throw unprocessable('Channel must be EMAIL or SMS.', 'INVALID_CHANNEL');
+    }
+
+    const result = await verifyOtp({ userId: req.user.id, channel: upperChannel, code });
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/auth/verification-status — authenticated
+async function verificationStatusEndpoint(req, res, next) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        emailVerified: true,
+        phoneVerified: true,
+        isVerified: true,
+      },
+    });
+    if (!user) throw unauthorized('User not found.', 'USER_NOT_FOUND');
+    res.status(200).json({ success: true, data: user });
   } catch (err) {
     next(err);
   }
@@ -272,4 +384,7 @@ module.exports = {
   changePassword,
   me,
   setupResponder,
+  sendOtpEndpoint,
+  verifyOtpEndpoint,
+  verificationStatusEndpoint,
 };

@@ -302,13 +302,13 @@ export default function MyReportsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  topContainer: { paddingHorizontal: spacing.l },
-  list: { padding: 16, paddingBottom: 32 },
+  topContainer: { paddingHorizontal: spacing.l, maxWidth: 680, width: '100%', alignSelf: 'center' },
+  list: { padding: spacing.l, paddingBottom: spacing.xxl, maxWidth: 680, width: '100%', alignSelf: 'center' },
   newBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: 1.2,
   },
   newBtnText: {
     fontSize: 12.5,
@@ -317,15 +317,15 @@ const styles = StyleSheet.create({
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 42,
-    borderRadius: radius.m,
-    borderWidth: 1,
-    paddingHorizontal: spacing.m,
+    height: 46,
+    borderRadius: radius.l,
+    borderWidth: 1.2,
+    paddingHorizontal: spacing.l,
     marginBottom: spacing.s,
   },
   searchInput: {
     flex: 1,
-    fontSize: 13.5,
+    fontSize: 14,
     paddingVertical: 0,
   },
   catScroll: {
@@ -337,20 +337,21 @@ const styles = StyleSheet.create({
   catChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: 1.2,
   },
   catChipText: {
-    fontSize: 12,
+    fontSize: 12.5,
+    fontWeight: '600',
   },
   statsBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: radius.m,
+    borderRadius: radius.l,
     borderWidth: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     marginBottom: spacing.s,
   },
   statCell: {
@@ -358,11 +359,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statVal: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: -0.3,
   },
   statKey: {
-    fontSize: 11,
+    fontSize: 11.5,
+    fontWeight: '600',
     marginTop: 2,
   },
   statDiv: {

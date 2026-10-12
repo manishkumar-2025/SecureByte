@@ -41,15 +41,29 @@ async function requireAuth(req, res, next) {
   }
 }
 
-/** Role-based authorization. Usage: requireRole('RESPONDER'). */
+/** Campus Role Groups */
+const STAFF_ROLES = ['RESPONDER', 'ADMIN', 'SECURITY', 'WARDEN', 'FACULTY', 'STAFF', 'SENSITIVE_OFFICER', 'SYSTEM_ADMIN'];
+const ADMIN_ROLES = ['ADMIN', 'SYSTEM_ADMIN'];
+const SENSITIVE_ROLES = ['ADMIN', 'SENSITIVE_OFFICER'];
+const EMERGENCY_ROLES = ['RESPONDER', 'ADMIN', 'SECURITY'];
+
+/** Role-based authorization. Usage: requireRole('RESPONDER') or requireRole(...STAFF_ROLES). */
 function requireRole(...roles) {
+  const allowed = roles.flat();
   return (req, res, next) => {
     if (!req.user) return next(unauthorized('Authentication required.'));
-    if (!roles.includes(req.user.role)) {
+    if (!allowed.includes(req.user.role)) {
       return next(forbidden('You do not have permission to perform this action.', 'FORBIDDEN'));
     }
     next();
   };
 }
 
-module.exports = { requireAuth, requireRole };
+module.exports = {
+  requireAuth,
+  requireRole,
+  STAFF_ROLES,
+  ADMIN_ROLES,
+  SENSITIVE_ROLES,
+  EMERGENCY_ROLES,
+};

@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { api } from '../src/api/client';
 import { enqueueIncident } from '../src/utils/outboxQueue';
+import { isDeviceOffline } from '../src/utils/network';
 import { storage } from '../src/utils/storage';
 import { AuthGate } from '../src/components/Gate';
 import ScreenHeader from '../src/components/ScreenHeader';
@@ -179,7 +180,8 @@ function Sos() {
       setPhase('sent');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
-      if (e.code === 'NETWORK_ERROR' || e.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      const trulyOffline = await isDeviceOffline();
+      if (trulyOffline) {
         // Enqueue into persistent offline outbox
         const queued = await enqueueIncident(payload);
         const syntheticIncident = {
@@ -203,6 +205,8 @@ function Sos() {
           ? 'Your SOS was already received a moment ago. Check My Reports — no need to send it again.'
           : e.code === 'UNVERIFIED_ACCOUNT'
           ? 'Account verification required. Please verify your account to send emergency alerts.'
+          : e.code === 'NETWORK_ERROR'
+          ? 'Cannot reach campus security server. Please ensure the backend server is reachable, or use the direct phone numbers below.'
           : e.message
       );
       setPhase('error');
@@ -509,68 +513,76 @@ const styles = StyleSheet.create({
   scroll: { padding: spacing.l, paddingBottom: spacing.xxl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   sending: { marginTop: spacing.m, ...type.headline, textAlign: 'center' },
-  infoCard: { marginBottom: spacing.m },
-  infoTitle: { ...type.bodyStrong, fontSize: 15, marginBottom: 8 },
-  infoLine: { fontSize: 13, lineHeight: 20, marginBottom: 4 },
-  contactHint: { fontSize: 13, lineHeight: 19, marginBottom: spacing.m },
-  locNote: { fontSize: 12.5, marginBottom: spacing.m, textAlign: 'center' },
-  presetTitle: { fontSize: 13.5, fontWeight: '700' },
-  presetHint: { fontSize: 12, marginTop: 2, marginBottom: 8 },
-  landmarkChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  lmChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1 },
-  lmChipText: { fontSize: 12, fontWeight: '600' },
-  selectedLm: { fontSize: 12, fontWeight: '700', marginTop: 8 },
+  infoCard: { marginBottom: spacing.m, borderRadius: radius.l },
+  infoTitle: { ...type.bodyStrong, fontSize: 15.5, marginBottom: 8, letterSpacing: -0.2 },
+  infoLine: { fontSize: 13.5, lineHeight: 21, marginBottom: 5 },
+  contactHint: { fontSize: 13.5, lineHeight: 20, marginBottom: spacing.m },
+  locNote: { fontSize: 13, marginBottom: spacing.m, textAlign: 'center', fontWeight: '500' },
+  presetTitle: { fontSize: 14, fontWeight: '800', letterSpacing: -0.1 },
+  presetHint: { fontSize: 12.5, marginTop: 2, marginBottom: 10 },
+  landmarkChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  lmChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.pill, borderWidth: 1.2 },
+  lmChipText: { fontSize: 12.5, fontWeight: '700' },
+  selectedLm: { fontSize: 12.5, fontWeight: '800', marginTop: 10 },
   bigSos: {
-    borderRadius: radius.xl,
+    borderRadius: radius.xxl,
     alignItems: 'center',
     paddingVertical: spacing.xxl,
     marginTop: spacing.s,
     borderWidth: 3,
-    elevation: 6,
+    elevation: 8,
+    shadowColor: '#EF4444',
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
   },
-  sosPressed: { opacity: 0.9 },
-  bigSosText: { color: '#FFFFFF', fontSize: 30, fontWeight: '900', letterSpacing: 2 },
-  bigSosSub: { color: '#FECACA', fontSize: 12.5, marginTop: 6 },
+  sosPressed: { opacity: 0.9, transform: [{ scale: 0.985 }] },
+  bigSosText: { color: '#FFFFFF', fontSize: 32, fontWeight: '900', letterSpacing: 2 },
+  bigSosSub: { color: '#FECACA', fontSize: 13, marginTop: 6, fontWeight: '600' },
   countBlock: { alignItems: 'center', marginTop: spacing.xl },
-  countTitle: { ...type.headline, fontSize: 18, letterSpacing: 1 },
-  countNumber: { fontSize: 110, fontWeight: '900', marginVertical: spacing.m, fontVariant: ['tabular-nums'] },
-  progressTrack: { width: '72%', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: spacing.l },
-  countHint: { fontSize: 13.5, marginBottom: spacing.l, textAlign: 'center', paddingHorizontal: spacing.xl },
+  countTitle: { ...type.headline, fontSize: 19, letterSpacing: 1.2 },
+  countNumber: { fontSize: 120, fontWeight: '900', marginVertical: spacing.m, fontVariant: ['tabular-nums'] },
+  progressTrack: { width: '80%', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: spacing.l },
+  countHint: { fontSize: 14, marginBottom: spacing.l, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: 20 },
   cancelButton: {
     borderWidth: 2.5,
-    borderRadius: radius.l,
+    borderRadius: radius.xl,
     paddingHorizontal: spacing.xl,
     minHeight: 68,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2,
+    elevation: 4,
+    shadowColor: '#10B981',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
-  cancelPressed: { opacity: 0.8 },
-  cancelText: { fontSize: 17, fontWeight: '900' },
+  cancelPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
+  cancelText: { fontSize: 17.5, fontWeight: '900', letterSpacing: 0.5 },
   sentBlock: { alignItems: 'center', paddingTop: spacing.m },
-  sentIcon: { fontSize: 56 },
-  sentTitle: { ...type.title, marginTop: spacing.m, textAlign: 'center' },
-  sentSub: { fontSize: 13, textAlign: 'center', marginTop: 4, lineHeight: 18 },
-  kvLabel: { fontSize: 11, fontWeight: '700', marginTop: spacing.m, textTransform: 'uppercase', letterSpacing: 0.5 },
-  kvValue: { fontSize: 13.5, marginTop: 2, lineHeight: 19 },
+  sentIcon: { fontSize: 60 },
+  sentTitle: { ...type.title, fontSize: 24, marginTop: spacing.m, textAlign: 'center', letterSpacing: -0.4 },
+  sentSub: { fontSize: 13.5, textAlign: 'center', marginTop: 4, lineHeight: 20 },
+  kvLabel: { fontSize: 11.5, fontWeight: '800', marginTop: spacing.m, textTransform: 'uppercase', letterSpacing: 0.6 },
+  kvValue: { fontSize: 14, marginTop: 3, lineHeight: 20 },
   directiveRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
-  directiveText: { fontSize: 12.5, lineHeight: 18, flex: 1 },
-  disclaimer: { textAlign: 'center', fontSize: 11.5, marginTop: spacing.xl, lineHeight: 17 },
+  directiveText: { fontSize: 13, lineHeight: 19, flex: 1 },
+  disclaimer: { textAlign: 'center', fontSize: 12, marginTop: spacing.xl, lineHeight: 18 },
   helplineBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: 14,
     borderRadius: radius.m,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  helplineName: { fontSize: 13.5, fontWeight: '700' },
-  helplineRole: { fontSize: 11.5, marginTop: 2 },
+  helplineName: { fontSize: 14, fontWeight: '700', letterSpacing: -0.1 },
+  helplineRole: { fontSize: 12, marginTop: 2 },
   dialBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: radius.pill,
     marginLeft: 8,
   },
-  dialBadgeText: { fontSize: 11.5, fontWeight: '700' },
+  dialBadgeText: { fontSize: 12, fontWeight: '800' },
 });

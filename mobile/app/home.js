@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api/client';
+import { getPendingIncidents } from '../src/utils/outboxQueue';
+import { storage } from '../src/utils/storage';
 import { AuthGate, RoleGate } from '../src/components/Gate';
 import Card, { SectionTitle } from '../src/components/Card';
 import Button from '../src/components/Button';
@@ -15,7 +17,7 @@ import { useConfirm } from '../src/components/ConfirmDialog';
 import { useToast } from '../src/components/Toast';
 import { useTheme } from '../src/hooks/useTheme';
 import { useUnreadCount } from '../src/hooks/useUnreadCount';
-import { CATEGORY_META, radius, shadowCard, spacing, type } from '../src/theme';
+import { CATEGORY_META, radius, shadowCard, shadowSubtle, spacing, type } from '../src/theme';
 import { formatDateTime, timeAgo } from '../src/utils/format';
 
 const SAFETY_TIPS = [
@@ -100,19 +102,80 @@ function Home() {
 
   const load = useCallback(async () => {
     setError(null);
+
+    // 1. Fetch pending local outbox queue
+    let pendingItems = [];
     try {
-      const [my, ann, ct, ck] = await Promise.all([
-        api('/api/incidents/my?limit=3&page=1'),
-        api('/api/announcements?limit=3&page=1'),
-        api('/api/contacts'),
-        api('/api/checkins/me?limit=1&page=1'),
-      ]);
-      setRecent(my.items);
-      setAnnouncements(ann.items);
-      setContacts(ct.items);
-      setLastCheckIn(ck.items[0] || null);
-    } catch (e) {
-      setError(e.message);
+      const pending = await getPendingIncidents();
+      pendingItems = pending.map((q) => ({
+        id: q.id,
+        title: q.payload.title || (q.payload.isSos ? '🚨 Emergency SOS' : 'Incident Report'),
+        description: q.payload.description,
+        category: q.payload.category || (q.payload.isSos ? 'SECURITY_THREAT' : 'OTHER'),
+        priority: q.payload.priority || (q.payload.isSos ? 'CRITICAL' : 'MEDIUM'),
+        status: 'PENDING_OFFLINE_SYNC',
+        createdAt: q.createdAt,
+        location: q.payload.location,
+        isSos: !!q.payload.isSos,
+        isOfflineQueued: true,
+      }));
+    } catch (e) {}
+
+    // 2. Fetch locally cached reports for immediate display
+    let cachedList = [];
+    try {
+      const cached = await storage.getItem('cache_my_reports');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) cachedList = parsed.slice(0, 3);
+      }
+    } catch (e) {}
+
+    // Immediate optimistic populate from cache and outbox
+    setRecent((curr) => {
+      if (curr === null && (pendingItems.length > 0 || cachedList.length > 0)) {
+        return [...pendingItems, ...cachedList].slice(0, 3);
+      }
+      return curr;
+    });
+
+    // 3. Query all endpoints resiliently using Promise.allSettled
+    const [myRes, annRes, ctRes, ckRes] = await Promise.allSettled([
+      api('/api/incidents/my?limit=3&page=1'),
+      api('/api/announcements?limit=3&page=1'),
+      api('/api/contacts'),
+      api('/api/checkins/me?limit=1&page=1'),
+    ]);
+
+    if (myRes.status === 'fulfilled') {
+      const serverItems = myRes.value?.items || [];
+      const combined = [...pendingItems, ...serverItems].slice(0, 3);
+      setRecent(combined);
+      try {
+        await storage.setItem('cache_my_reports', JSON.stringify(serverItems));
+      } catch (err) {}
+    } else {
+      // If server query failed, ensure pending + cached items remain visible
+      setRecent((curr) => curr ?? [...pendingItems, ...cachedList].slice(0, 3));
+      if (myRes.reason?.code !== 'NETWORK_ERROR') {
+        setError(myRes.reason?.message || 'Could not refresh latest reports');
+      }
+    }
+
+    if (annRes.status === 'fulfilled') {
+      setAnnouncements(annRes.value?.items || []);
+    } else {
+      setAnnouncements((curr) => curr ?? []);
+    }
+
+    if (ctRes.status === 'fulfilled') {
+      setContacts(ctRes.value?.items || []);
+    } else {
+      setContacts((curr) => curr ?? []);
+    }
+
+    if (ckRes.status === 'fulfilled') {
+      setLastCheckIn(ckRes.value?.items?.[0] || null);
     }
   }, []);
 
@@ -250,21 +313,132 @@ function Home() {
           </Text>
         </View>
 
+        {/* ── College Verification Banner ── */}
+        {user?.verificationStatus !== 'APPROVED' ? (
+          <PressableScale
+            onPress={() => router.push('/verification')}
+            style={[
+              styles.verifBanner,
+              {
+                backgroundColor:
+                  user?.verificationStatus === 'PENDING'
+                    ? (c.isDark ? '#422006' : '#FEF3C7')
+                    : user?.verificationStatus === 'RESUBMIT_REQUIRED'
+                    ? (c.isDark ? '#451A03' : '#FFEDD5')
+                    : (c.isDark ? '#1E293B' : '#F1F5F9'),
+                borderColor:
+                  user?.verificationStatus === 'PENDING'
+                    ? '#F59E0B'
+                    : user?.verificationStatus === 'RESUBMIT_REQUIRED'
+                    ? '#EA580C'
+                    : c.border,
+              },
+            ]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={{ fontSize: 20 }}>
+                {user?.verificationStatus === 'PENDING' ? '⏳' : user?.verificationStatus === 'RESUBMIT_REQUIRED' ? '⚠️' : '📋'}
+              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.verifTitle, { color: c.text }]}>
+                  {user?.verificationStatus === 'PENDING'
+                    ? 'College Verification Pending'
+                    : user?.verificationStatus === 'RESUBMIT_REQUIRED'
+                    ? 'Action Required on Verification'
+                    : 'Complete College Verification'}
+                </Text>
+                <Text style={[styles.verifSub, { color: c.sub }]} numberOfLines={2}>
+                  {user?.verificationStatus === 'PENDING'
+                    ? `Submitted for ${user?.requestedRole || 'Student'}. Tap to view verification status.`
+                    : user?.verificationStatus === 'RESUBMIT_REQUIRED'
+                    ? 'Reviewer requested updated details. Tap to resubmit.'
+                    : 'Verify student/employee credentials to unlock authorized campus privileges.'}
+                </Text>
+              </View>
+              <View style={[styles.verifActionBtn, { backgroundColor: c.primary }]}>
+                <Text style={styles.verifActionText}>
+                  {user?.verificationStatus === 'PENDING' ? 'Status' : 'Verify'}
+                </Text>
+              </View>
+            </View>
+          </PressableScale>
+        ) : null}
+
+        {/* Staff / Admin Quick Switcher */}
+        {user?.role && user.role !== 'STUDENT' ? (
+          <PressableScale
+            onPress={() => router.push('/dashboard')}
+            style={[styles.staffPortalBanner, { backgroundColor: c.primarySoft, borderColor: c.primary }]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 18 }}>🛡️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.staffPortalTitle, { color: c.primaryDark }]}>
+                  Authorized Staff Access ({user.role})
+                </Text>
+                <Text style={[styles.staffPortalSub, { color: c.sub }]}>
+                  Open Safety Incident Console & Verification Queue
+                </Text>
+              </View>
+              <Text style={[styles.staffPortalLink, { color: c.primary }]}>Open Console →</Text>
+            </View>
+          </PressableScale>
+        ) : null}
+
         <ErrorBanner message={error} onRetry={load} />
 
-        {/* ── Emergency SOS — prominent, controlled red button ── */}
-        <PressableScale
-          onPress={() => router.push('/sos')}
-          haptic={false}
-          accessibilityRole="button"
-          accessibilityLabel="Emergency SOS. Opens a confirmation countdown before sending an alert."
+        {/* ── Emergency SOS Activation Section ── */}
+        <SectionTitle
+          action={
+            <Pressable onPress={() => router.push('/sos')} accessibilityRole="link">
+              <Text style={[styles.link, { color: c.danger }]}>Open Console 🚨</Text>
+            </Pressable>
+          }
         >
-          <View style={[styles.sosButton, { backgroundColor: c.danger }]}>
-            <Text style={styles.sosIcon}>🆘</Text>
-            <Text style={styles.sosTitle}>EMERGENCY SOS</Text>
-            <Text style={styles.sosSub}>Tap to trigger critical campus response</Text>
+          Emergency SOS Activation
+        </SectionTitle>
+
+        <Card variant="elevated" style={[styles.activationCard, { borderColor: c.danger }]}>
+          <View style={styles.activationHeader}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 18 }}>🚨</Text>
+                <Text style={[styles.activationTitle, { color: c.text }]}>Immediate Response Beacon</Text>
+              </View>
+              <Text style={[styles.activationSubtitle, { color: c.sub }]}>
+                Transmits real-time GPS telemetry and campus sector coordinates directly to security patrols & the BIT Sindri 24×7 control room.
+              </Text>
+            </View>
           </View>
-        </PressableScale>
+
+          <PressableScale
+            onPress={() => router.push('/sos')}
+            haptic={false}
+            accessibilityRole="button"
+            accessibilityLabel="Activate Emergency SOS. Opens safety countdown."
+          >
+            <View style={[styles.sosButton, { backgroundColor: c.danger }]}>
+              <Text style={styles.sosIcon}>🆘</Text>
+              <Text style={styles.sosTitle}>ACTIVATE EMERGENCY SOS</Text>
+              <Text style={styles.sosSub}>Tap to start 3-second rapid dispatch countdown</Text>
+            </View>
+          </PressableScale>
+
+          <View style={styles.activationFeatures}>
+            <View style={styles.activationFeatureItem}>
+              <Text style={styles.featureIcon}>📍</Text>
+              <Text style={[styles.featureText, { color: c.sub }]}>GPS Telemetry</Text>
+            </View>
+            <View style={styles.activationFeatureItem}>
+              <Text style={styles.featureIcon}>⏱️</Text>
+              <Text style={[styles.featureText, { color: c.sub }]}>3s Abort Safety</Text>
+            </View>
+            <View style={styles.activationFeatureItem}>
+              <Text style={styles.featureIcon}>🛡️</Text>
+              <Text style={[styles.featureText, { color: c.sub }]}>Patrol Alert</Text>
+            </View>
+          </View>
+        </Card>
 
         {/* ── Virtual Night Escort Companion Widget ── */}
         {escortActive ? (
@@ -692,14 +866,16 @@ function Home() {
 function QuickAction({ icon, label, onPress }) {
   const c = useTheme();
   return (
-    <PressableScale onPress={onPress} accessibilityLabel={label}>
-      <View style={[styles.quick, { backgroundColor: c.card, borderColor: c.border }]}>
-        <Text style={{ fontSize: 22 }}>{icon}</Text>
-        <Text style={[styles.quickLabel, { color: c.sub }]} numberOfLines={1}>
-          {label}
-        </Text>
-      </View>
-    </PressableScale>
+    <View style={{ flex: 1 }}>
+      <PressableScale onPress={onPress} accessibilityLabel={label} style={{ width: '100%' }}>
+        <View style={[styles.quick, { backgroundColor: c.card, borderColor: c.border }, shadowSubtle]}>
+          <Text style={{ fontSize: 24, marginBottom: 4 }}>{icon}</Text>
+          <Text style={[styles.quickLabel, { color: c.text }]} numberOfLines={1}>
+            {label}
+          </Text>
+        </View>
+      </PressableScale>
+    </View>
   );
 }
 
@@ -785,6 +961,44 @@ const styles = StyleSheet.create({
   },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 11.5, fontWeight: '700', flex: 1 },
+  activationCard: {
+    borderWidth: 1.5,
+    borderRadius: radius.l,
+    padding: spacing.l,
+    marginBottom: spacing.m,
+  },
+  activationHeader: {
+    marginBottom: spacing.m,
+  },
+  activationTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  activationSubtitle: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  activationFeatures: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.m,
+    paddingTop: spacing.m,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(150, 150, 150, 0.15)',
+  },
+  activationFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  featureIcon: {
+    fontSize: 13,
+  },
+  featureText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
   sosButton: {
     borderRadius: radius.xl,
     alignItems: 'center',
@@ -809,38 +1023,37 @@ const styles = StyleSheet.create({
   escortPromoSub: { fontSize: 12, lineHeight: 17, marginTop: 3 },
   escortStartBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.m, borderWidth: 1 },
   escortStartBtnText: { fontSize: 12.5, fontWeight: '800' },
-  quickRow: { flexDirection: 'row', gap: spacing.m, marginTop: spacing.l },
+  quickRow: { flexDirection: 'row', gap: spacing.s, marginTop: spacing.m },
   quick: {
-    flex: 1,
     borderWidth: 1,
-    borderRadius: radius.m,
+    borderRadius: radius.l,
     alignItems: 'center',
-    paddingVertical: spacing.m,
-    paddingHorizontal: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
   },
-  quickLabel: { fontSize: 11.5, fontWeight: '700', marginTop: 4 },
+  quickLabel: { fontSize: 12, fontWeight: '700', marginTop: 2, textAlign: 'center' },
   hotlineRow: { flexDirection: 'column' },
   hotlineChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    padding: 12,
     borderRadius: radius.m,
     borderWidth: 1,
   },
-  hotlineTitle: { fontSize: 13.5, fontWeight: '700' },
-  hotlineSub: { fontSize: 11.5, marginTop: 1 },
-  callBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill },
+  hotlineTitle: { fontSize: 14, fontWeight: '700', letterSpacing: -0.1 },
+  hotlineSub: { fontSize: 12, marginTop: 2 },
+  callBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill },
   callBadgeText: { fontSize: 12.5, fontWeight: '800' },
-  checkinText: { fontSize: 13, lineHeight: 19, marginBottom: spacing.m },
+  checkinText: { fontSize: 13.5, lineHeight: 20, marginBottom: spacing.m },
   checkinRow: { flexDirection: 'row', gap: spacing.m },
-  link: { fontWeight: '700', fontSize: 13.5 },
-  tipsScroll: { paddingVertical: 4, gap: 12 },
-  tipCard: { width: 220, padding: 14, borderRadius: radius.m, borderWidth: 1 },
-  tipBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill },
-  tipBadgeText: { fontSize: 9.5, fontWeight: '800' },
-  tipTitle: { fontSize: 14, fontWeight: '700', marginTop: 8 },
-  tipDesc: { fontSize: 12, lineHeight: 17, marginTop: 4 },
-  tipReadMore: { fontSize: 12, fontWeight: '800', marginTop: 8 },
+  link: { fontWeight: '800', fontSize: 13.5 },
+  tipsScroll: { paddingVertical: 6, gap: 14 },
+  tipCard: { width: 230, padding: 16, borderRadius: radius.l, borderWidth: 1 },
+  tipBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
+  tipBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+  tipTitle: { fontSize: 15, fontWeight: '800', marginTop: 10, letterSpacing: -0.2 },
+  tipDesc: { fontSize: 12.5, lineHeight: 18, marginTop: 5 },
+  tipReadMore: { fontSize: 12.5, fontWeight: '800', marginTop: 10 },
   tipPointText: { fontSize: 13.5, lineHeight: 21, flex: 1 },
   annHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   annTime: { fontSize: 12 },
@@ -872,4 +1085,29 @@ const styles = StyleSheet.create({
   modalTipBox: { padding: 12, borderRadius: radius.m, borderWidth: 1, marginTop: spacing.s },
   modalTipTitle: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
   modalTipText: { fontSize: 12.5, lineHeight: 18, marginTop: 2 },
+  verifBanner: {
+    padding: spacing.m,
+    borderRadius: radius.l,
+    borderWidth: 1.5,
+    marginTop: spacing.s,
+    marginBottom: spacing.xs,
+  },
+  verifTitle: { fontSize: 14.5, fontWeight: '800' },
+  verifSub: { fontSize: 12.5, lineHeight: 17, marginTop: 2 },
+  verifActionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+  },
+  verifActionText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  staffPortalBanner: {
+    padding: spacing.m,
+    borderRadius: radius.l,
+    borderWidth: 1.5,
+    marginTop: spacing.s,
+    marginBottom: spacing.xs,
+  },
+  staffPortalTitle: { fontSize: 14, fontWeight: '800' },
+  staffPortalSub: { fontSize: 12, marginTop: 2 },
+  staffPortalLink: { fontSize: 12.5, fontWeight: '800' },
 });

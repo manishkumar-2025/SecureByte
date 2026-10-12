@@ -68,10 +68,10 @@ async function notifyUsers(users, { type, title, body, incidentId = null, pushTi
   }
 }
 
-/** Loads every responder + admin (id + prefs only) — the alert audience. */
+/** Loads every safety responder, security officer, warden and admin (id + prefs only) — the alert audience. */
 async function loadSafetyStaff() {
   return prisma.user.findMany({
-    where: { role: { in: ['RESPONDER', 'ADMIN'] } },
+    where: { role: { in: ['RESPONDER', 'ADMIN', 'SECURITY', 'WARDEN', 'SENSITIVE_OFFICER'] } },
     select: { id: true, notificationPrefs: true },
   });
 }

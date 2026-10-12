@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { api, apiUpload } from '../src/api/client';
 import { enqueueIncident } from '../src/utils/outboxQueue';
+import { isDeviceOffline } from '../src/utils/network';
 import { AuthGate } from '../src/components/Gate';
 import ScreenHeader from '../src/components/ScreenHeader';
 import Card from '../src/components/Card';
@@ -348,16 +349,22 @@ function Report() {
       );
       router.replace('/my-reports');
     } catch (e) {
-      if (incidentPayload && (e.code === 'NETWORK_ERROR' || e.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false))) {
+      const trulyOffline = await isDeviceOffline();
+      if (incidentPayload && trulyOffline) {
         await enqueueIncident(incidentPayload);
-        toast.info('Saved to Offline Outbox 💾', 'No network detected. Your report is saved locally and will automatically sync once connected.');
+        toast.info('Saved to Offline Outbox 💾', 'No internet connection detected. Your report is saved locally and will automatically sync once connected.');
         router.replace('/my-reports');
         return;
       }
 
-      setError(e.message);
+      // If internet is active, show the actual error and provide retry
+      setError(
+        e.code === 'NETWORK_ERROR'
+          ? 'Cannot reach the SecureByte server. Please ensure the backend server is running and reachable, or tap Retry.'
+          : e.message || 'Submission failed. Please check the details.'
+      );
       if (e.details) setFieldErrors(e.details);
-      toast.error('Could not submit', e.message);
+      toast.error('Submission Failed', e.message || 'Server connection error.');
     } finally {
       setSubmitting(false);
     }
@@ -888,29 +895,30 @@ const styles = StyleSheet.create({
     gap: 12,
     borderWidth: 1,
     borderRadius: radius.l,
-    padding: spacing.m,
+    padding: spacing.l,
     marginBottom: spacing.m,
   },
-  safetyAdvisoryTitle: { fontSize: 14.5, fontWeight: '800' },
-  safetyAdvisorySub: { fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  safetyAdvisoryTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
+  safetyAdvisorySub: { fontSize: 12.5, lineHeight: 18, marginTop: 4 },
   sectionHeading: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
     marginBottom: spacing.s,
-    letterSpacing: 0.2,
+    marginTop: spacing.s,
+    letterSpacing: -0.2,
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.m,
-    height: 44,
-    borderRadius: radius.m,
-    borderWidth: 1,
+    paddingHorizontal: spacing.l,
+    height: 48,
+    borderRadius: radius.l,
+    borderWidth: 1.2,
     marginBottom: spacing.m,
   },
   searchInput: {
     flex: 1,
-    fontSize: 13.5,
+    fontSize: 14,
     paddingVertical: 0,
   },
   masterCatScroll: {
@@ -918,12 +926,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.s,
   },
   masterCard: {
-    width: 140,
-    padding: 12,
-    borderRadius: radius.m,
+    width: 148,
+    padding: 14,
+    borderRadius: radius.l,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    minHeight: 110,
+    minHeight: 116,
   },
   masterCardTitle: {
     fontSize: 12.5,

@@ -36,7 +36,16 @@ export function RoleGate({ role, children }) {
   return children;
 }
 
-const STAFF_ROLES = ['RESPONDER', 'ADMIN'];
+const STAFF_ROLES = [
+  'RESPONDER',
+  'ADMIN',
+  'SECURITY',
+  'WARDEN',
+  'FACULTY',
+  'STAFF',
+  'SENSITIVE_OFFICER',
+  'SYSTEM_ADMIN',
+];
 
 /** Restricts a screen to staff (RESPONDER or ADMIN). */
 export function StaffGate({ children }) {

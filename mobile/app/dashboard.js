@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { api } from '../src/api/client';
@@ -11,9 +11,10 @@ import ChipRow from '../src/components/ChipRow';
 import SegmentedTabs from '../src/components/SegmentedTabs';
 import StatCard from '../src/components/StatCard';
 import Input from '../src/components/Input';
+import Button from '../src/components/Button';
 import Card, { SectionTitle } from '../src/components/Card';
 import { EmptyState, ErrorBanner, SkeletonList } from '../src/components/Feedback';
-import { RoleBadge } from '../src/components/Badges';
+import { RoleBadge, VerificationBadge } from '../src/components/Badges';
 import { statusMeta, priorityMeta, CATEGORY_META, radius, spacing, type } from '../src/theme';
 import { useTheme } from '../src/hooks/useTheme';
 import { timeAgo } from '../src/utils/format';
@@ -28,21 +29,25 @@ const CATEGORY_FILTERS = [
 ];
 
 /**
- * Staff console (RESPONDER + ADMIN) with three tabs:
- *   Queue     — live incident queue (SOS first), search + filters
- *   Analytics — real aggregated statistics from /api/responder/analytics
- *   Users     — ADMIN only: campus user directory
+ * Staff console (RESPONDER + ADMIN) with tabs:
+ *   Queue         — live incident queue (SOS first), search + filters
+ *   Analytics     — real aggregated statistics from /api/responder/analytics
+ *   Verifications — ADMIN only: campus verification queue & approval controls
+ *   Users         — ADMIN only: campus user directory
  */
 function Dashboard() {
   const { user } = useAuth();
   const c = useTheme();
   const router = useRouter();
-  const isAdmin = user?.role === 'ADMIN';
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN';
 
   const tabs = [
     { value: 'queue', label: 'Queue', icon: '🚨' },
     { value: 'analytics', label: 'Analytics', icon: '📊' },
-    ...(isAdmin ? [{ value: 'users', label: 'Users', icon: '👥' }] : []),
+    ...(isAdmin ? [
+      { value: 'verifications', label: 'Verify', icon: '🎓' },
+      { value: 'users', label: 'Users', icon: '👥' },
+    ] : []),
   ];
   const [tab, setTab] = useState('queue');
 
@@ -51,7 +56,7 @@ function Dashboard() {
       <View style={{ maxWidth: 820, width: '100%', alignSelf: 'center' }}>
         <ScreenHeader
           title="Safety Console"
-          subtitle={`Signed in as ${user?.name || 'staff'} · ${user?.role === 'ADMIN' ? 'Admin' : 'Responder'}`}
+          subtitle={`Signed in as ${user?.name || 'staff'} · ${isAdmin ? 'Admin' : 'Responder'}`}
           right={
             <Pressable
               onPress={() => router.push('/profile')}
@@ -68,7 +73,15 @@ function Dashboard() {
           <SegmentedTabs tabs={tabs} value={tab} onChange={setTab} />
         </View>
       </View>
-      {tab === 'queue' ? <QueueTab /> : tab === 'analytics' ? <AnalyticsTab /> : <UsersTab />}
+      {tab === 'queue' ? (
+        <QueueTab />
+      ) : tab === 'analytics' ? (
+        <AnalyticsTab />
+      ) : tab === 'verifications' ? (
+        <VerificationsTab />
+      ) : (
+        <UsersTab />
+      )}
     </SafeAreaView>
   );
 }
@@ -309,7 +322,298 @@ function AnalyticsTab() {
   );
 }
 
-// ── Tab 3: user directory (ADMIN only) ────────────────────────
+// ── Tab 3: campus verification queue (ADMIN only) ─────────────
+const VERIFICATION_STATUS_FILTERS = [
+  { value: null, label: 'All' },
+  { value: 'PENDING', label: '⏳ Pending' },
+  { value: 'RESUBMIT_REQUIRED', label: '⚠️ Resubmit' },
+  { value: 'APPROVED', label: '✓ Approved' },
+  { value: 'REJECTED', label: '✕ Rejected' },
+];
+
+function VerificationsTab() {
+  const c = useTheme();
+  const [items, setItems] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('PENDING');
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(null);
+  const [actionSuccess, setActionSuccess] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const statusRef = useRef(statusFilter);
+  statusRef.current = statusFilter;
+  const searchRef = useRef(search);
+  searchRef.current = search;
+
+  const load = useCallback(async (st, q) => {
+    const effStatus = st !== undefined ? st : statusRef.current;
+    const effSearch = q !== undefined ? q : searchRef.current;
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (effStatus) params.set('status', effStatus);
+      if (effSearch && effSearch.trim()) params.set('q', effSearch.trim());
+      params.set('limit', '50');
+      const data = await api(`/api/admin/verifications?${params.toString()}`);
+      setItems(data.items);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  const handleReview = async (userItem, action, reason) => {
+    setActionLoading(userItem.id);
+    setActionSuccess(null);
+    setError(null);
+    try {
+      await api(`/api/admin/verifications/${userItem.id}/review`, {
+        method: 'POST',
+        body: {
+          action,
+          rejectionReason: reason || undefined,
+        },
+      });
+      setActionSuccess(`${userItem.name}: marked ${action}`);
+      // Refresh list
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const confirmApprove = (userItem) => {
+    Alert.alert(
+      'Approve Campus Credentials?',
+      `Approve ${userItem.name} and promote to ${userItem.requestedRole || 'STUDENT'} with full campus role permissions?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Approve & Unlock', onPress: () => handleReview(userItem, 'APPROVE') },
+      ]
+    );
+  };
+
+  const confirmResubmit = (userItem) => {
+    Alert.alert(
+      'Request Resubmission?',
+      `Ask ${userItem.name} to resubmit valid college credentials/ID proof?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Request Resubmit',
+          onPress: () => handleReview(userItem, 'RESUBMIT', 'Please verify your college ID proof and resubmit with official credentials.'),
+        },
+      ]
+    );
+  };
+
+  const confirmReject = (userItem) => {
+    Alert.alert(
+      'Reject Verification?',
+      `Reject verification application for ${userItem.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: () => handleReview(userItem, 'REJECT', 'Submitted credentials could not be verified against institutional records.'),
+        },
+      ]
+    );
+  };
+
+  return (
+    <FlatList
+      data={items || []}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.list}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={async () => {
+            setRefreshing(true);
+            await load();
+            setRefreshing(false);
+          }}
+          tintColor={c.primary}
+        />
+      }
+      ListHeaderComponent={
+        <View style={{ marginBottom: spacing.m }}>
+          <Input
+            placeholder="Search by name, email, roll no, dept..."
+            value={search}
+            onChangeText={(t) => {
+              setSearch(t);
+              load(statusFilter, t);
+            }}
+            style={{ marginBottom: spacing.m }}
+          />
+
+          <ChipRow
+            options={VERIFICATION_STATUS_FILTERS}
+            value={statusFilter}
+            onChange={(v) => {
+              setStatusFilter(v);
+              load(v, search);
+            }}
+          />
+
+          {actionSuccess ? (
+            <View style={[styles.successBanner, { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' }]}>
+              <Text style={{ color: '#166534', fontWeight: '700', fontSize: 13 }}>✓ {actionSuccess}</Text>
+            </View>
+          ) : null}
+
+          {error ? <ErrorBanner message={error} onRetry={() => load(statusFilter, search)} /> : null}
+        </View>
+      }
+      ListEmptyComponent={
+        items === null ? (
+          <SkeletonList rows={4} />
+        ) : (
+          <EmptyState
+            icon="🎓"
+            title="No verification requests"
+            description={
+              statusFilter === 'PENDING'
+                ? 'All campus verification requests have been triaged!'
+                : 'No accounts match the current filter.'
+            }
+          />
+        )
+      }
+      renderItem={({ item }) => {
+        const isBusy = actionLoading === item.id;
+        return (
+          <View style={[styles.vCard, { backgroundColor: c.card, borderColor: c.border }]}>
+            {/* Header: Name, badges */}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.s, marginBottom: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.vName, { color: c.text }]}>{item.name}</Text>
+                <Text style={[styles.vEmail, { color: c.sub }]}>
+                  {item.email} {item.phone ? `· ${item.phone}` : ''}
+                </Text>
+              </View>
+              <VerificationBadge status={item.verificationStatus} />
+            </View>
+
+            {/* Role transitions */}
+            <View style={styles.roleTransitionRow}>
+              <Text style={[styles.vMetaLabel, { color: c.faint }]}>Current:</Text>
+              <RoleBadge role={item.role} />
+              <Text style={{ color: c.faint, fontWeight: '800', marginHorizontal: 4 }}>→</Text>
+              <Text style={[styles.vMetaLabel, { color: c.faint }]}>Requested:</Text>
+              <RoleBadge role={item.requestedRole || item.role} />
+            </View>
+
+            {/* Credential Details Grid */}
+            <View style={[styles.vDetailsBox, { backgroundColor: c.surfaceAlt || '#F8FAFC', borderColor: c.border }]}>
+              {item.studentId ? (
+                <Text style={[styles.vDetailText, { color: c.text }]}>
+                  <Text style={{ fontWeight: '700' }}>Student ID: </Text>
+                  {item.studentId}
+                  {item.enrollmentNo ? ` (Reg: ${item.enrollmentNo})` : ''}
+                </Text>
+              ) : null}
+
+              {item.department ? (
+                <Text style={[styles.vDetailText, { color: c.text }]}>
+                  <Text style={{ fontWeight: '700' }}>Department: </Text>
+                  {item.department}
+                  {item.designation ? ` (${item.designation})` : ''}
+                </Text>
+              ) : null}
+
+              {item.course ? (
+                <Text style={[styles.vDetailText, { color: c.text }]}>
+                  <Text style={{ fontWeight: '700' }}>Course: </Text>
+                  {item.course}
+                  {item.yearOrSemester ? ` • ${item.yearOrSemester}` : ''}
+                </Text>
+              ) : null}
+
+              {item.residencyType || item.hostelName ? (
+                <Text style={[styles.vDetailText, { color: c.text }]}>
+                  <Text style={{ fontWeight: '700' }}>Hostel/Residency: </Text>
+                  {item.hostelName || item.residencyType}
+                  {item.roomOrOffice ? ` (Room/Office: ${item.roomOrOffice})` : ''}
+                </Text>
+              ) : null}
+
+              {item.guardBadgeId ? (
+                <Text style={[styles.vDetailText, { color: c.text }]}>
+                  <Text style={{ fontWeight: '700' }}>Badge ID: </Text>
+                  {item.guardBadgeId}
+                  {item.assignedZone ? ` • Zone: ${item.assignedZone}` : ''}
+                  {item.shift ? ` • Shift: ${item.shift}` : ''}
+                </Text>
+              ) : null}
+
+              {item.gender ? (
+                <Text style={[styles.vDetailText, { color: c.sub }]}>
+                  <Text style={{ fontWeight: '700' }}>Gender: </Text>
+                  {item.gender}
+                </Text>
+              ) : null}
+
+              {item.rejectionReason ? (
+                <View style={[styles.reasonNote, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
+                  <Text style={{ color: '#991B1B', fontSize: 12, fontWeight: '600' }}>
+                    Note: {item.rejectionReason}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            {/* Quick Actions */}
+            <View style={styles.vActionsRow}>
+              {item.verificationStatus !== 'APPROVED' ? (
+                <Pressable
+                  onPress={() => confirmApprove(item)}
+                  disabled={isBusy}
+                  style={[styles.vApproveBtn, { opacity: isBusy ? 0.6 : 1 }]}
+                >
+                  <Text style={styles.vApproveBtnText}>✓ Approve</Text>
+                </Pressable>
+              ) : null}
+
+              {item.verificationStatus !== 'RESUBMIT_REQUIRED' ? (
+                <Pressable
+                  onPress={() => confirmResubmit(item)}
+                  disabled={isBusy}
+                  style={[styles.vResubmitBtn, { borderColor: '#F59E0B', opacity: isBusy ? 0.6 : 1 }]}
+                >
+                  <Text style={[styles.vResubmitBtnText, { color: '#B45309' }]}>⚠️ Resubmit</Text>
+                </Pressable>
+              ) : null}
+
+              {item.verificationStatus !== 'REJECTED' ? (
+                <Pressable
+                  onPress={() => confirmReject(item)}
+                  disabled={isBusy}
+                  style={[styles.vRejectBtn, { borderColor: '#EF4444', opacity: isBusy ? 0.6 : 1 }]}
+                >
+                  <Text style={[styles.vRejectBtnText, { color: '#DC2626' }]}>✕ Reject</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        );
+      }}
+    />
+  );
+}
+
+// ── Tab 4: user directory (ADMIN only) ────────────────────────
 function UsersTab() {
   const c = useTheme();
   const [users, setUsers] = useState(null);
@@ -372,28 +676,101 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   list: { padding: spacing.l, paddingBottom: spacing.xxl, maxWidth: 820, width: '100%', alignSelf: 'center' },
   tabPad: { padding: spacing.l, maxWidth: 820, width: '100%', alignSelf: 'center' },
-  statsRow: { flexDirection: 'row', gap: spacing.m, marginBottom: spacing.m },
-  filterLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: spacing.s, marginBottom: 6 },
-  chart: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.s, height: 130 },
+  statsRow: { flexDirection: 'row', gap: spacing.s, marginBottom: spacing.s },
+  filterLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: spacing.m, marginBottom: 8 },
+  chart: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.s, height: 140 },
   barCol: { flex: 1, alignItems: 'center' },
-  bar: { width: '100%', height: 80, borderRadius: 4, justifyContent: 'flex-end', overflow: 'hidden' },
-  barValue: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
-  barLabel: { fontSize: 10.5, marginTop: 6 },
-  chartNote: { fontSize: 11.5, marginTop: spacing.m, fontStyle: 'italic' },
+  bar: { width: '100%', height: 90, borderRadius: radius.xs, justifyContent: 'flex-end', overflow: 'hidden' },
+  barValue: { fontSize: 11.5, fontWeight: '800', marginBottom: 4 },
+  barLabel: { fontSize: 11, fontWeight: '600', marginTop: 6 },
+  chartNote: { fontSize: 12, marginTop: spacing.m, fontStyle: 'italic', lineHeight: 17 },
   distRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.m },
-  distTrack: { flex: 1, height: 10, borderRadius: 5, marginHorizontal: spacing.s, overflow: 'hidden' },
-  distLabel: { fontSize: 12.5, fontWeight: '600' },
-  distValue: { fontSize: 13.5, fontWeight: '800' },
+  distTrack: { flex: 1, height: 10, borderRadius: 5, marginHorizontal: spacing.m, overflow: 'hidden' },
+  distLabel: { fontSize: 13, fontWeight: '600' },
+  distValue: { fontSize: 14, fontWeight: '800' },
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: radius.m,
-    padding: spacing.m,
+    borderRadius: radius.l,
+    padding: spacing.l,
     marginBottom: spacing.m,
   },
-  userAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: spacing.m },
-  userAvatarText: { fontSize: 15, fontWeight: '800' },
-  userName: { ...type.bodyStrong, fontSize: 14 },
-  userMeta: { fontSize: 12, marginTop: 1 },
+  userAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: spacing.m },
+  userAvatarText: { fontSize: 16, fontWeight: '800' },
+  userName: { ...type.bodyStrong, fontSize: 15 },
+  userMeta: { fontSize: 12.5, marginTop: 2 },
+  successBanner: {
+    borderWidth: 1,
+    borderRadius: radius.m,
+    paddingVertical: spacing.s,
+    paddingHorizontal: spacing.m,
+    marginBottom: spacing.m,
+  },
+  vCard: {
+    borderWidth: 1,
+    borderRadius: radius.l,
+    padding: spacing.l,
+    marginBottom: spacing.m,
+  },
+  vName: { ...type.bodyStrong, fontSize: 16 },
+  vEmail: { fontSize: 13, marginTop: 2 },
+  roleTransitionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginBottom: spacing.s,
+  },
+  vMetaLabel: { fontSize: 12, fontWeight: '600' },
+  vDetailsBox: {
+    borderWidth: 1,
+    borderRadius: radius.m,
+    padding: spacing.m,
+    gap: 4,
+    marginBottom: spacing.m,
+  },
+  vDetailText: { fontSize: 13, lineHeight: 18 },
+  reasonNote: {
+    borderWidth: 1,
+    borderRadius: radius.s,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    marginTop: 4,
+  },
+  vActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.s,
+    flexWrap: 'wrap',
+  },
+  vApproveBtn: {
+    backgroundColor: '#16A34A',
+    borderRadius: radius.m,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vApproveBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+  vResubmitBtn: {
+    borderWidth: 1,
+    backgroundColor: '#FFFBEB',
+    borderRadius: radius.m,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vResubmitBtnText: { fontWeight: '700', fontSize: 13 },
+  vRejectBtn: {
+    borderWidth: 1,
+    backgroundColor: '#FEF2F2',
+    borderRadius: radius.m,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vRejectBtnText: { fontWeight: '700', fontSize: 13 },
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { spacing, type } from '../theme';
+import { radius, spacing, type } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 import { useReducedMotion } from '../hooks/useTheme';
 
@@ -61,13 +61,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.m,
+    paddingHorizontal: spacing.l,
     paddingVertical: spacing.m,
   },
-  back: { minHeight: 48, justifyContent: 'center', paddingHorizontal: spacing.xs, width: 40 },
-  backText: { fontSize: 26 },
-  center: { flex: 1, alignItems: 'center' },
-  title: { ...type.headline, fontSize: 17.5 },
-  subtitle: { fontSize: 12.5, marginTop: 1 },
-  spacer: { width: 40, alignItems: 'flex-end' },
+  back: {
+    minHeight: 40,
+    minWidth: 40,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backText: { fontSize: 24, fontWeight: '700' },
+  center: { flex: 1, alignItems: 'center', paddingHorizontal: spacing.s },
+  title: { ...type.headline, fontSize: 18, letterSpacing: -0.3 },
+  subtitle: { fontSize: 12.5, marginTop: 2, textAlign: 'center' },
+  spacer: { minWidth: 40, alignItems: 'flex-end', justifyContent: 'center' },
 });

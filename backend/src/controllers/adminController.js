@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────
 const { prisma } = require('../lib/prisma');
 const { parsePagination } = require('../utils/pagination');
+const { notFound, unprocessable } = require('../utils/errors');
 
 // GET /api/responder/analytics
 async function getAnalytics(req, res, next) {
@@ -126,6 +127,11 @@ async function listUsers(req, res, next) {
           name: true,
           email: true,
           role: true,
+          requestedRole: true,
+          verificationStatus: true,
+          department: true,
+          designation: true,
+          studentId: true,
           createdAt: true,
           lockedUntil: true,
           _count: { select: { incidentsReported: true } },
@@ -143,4 +149,276 @@ async function listUsers(req, res, next) {
   }
 }
 
-module.exports = { getAnalytics, listUsers };
+// GET /api/admin/verifications?page=&limit=&status=&role=&q=
+async function listVerifications(req, res, next) {
+  try {
+    const { page, limit, skip, take } = parsePagination(req.query);
+    const where = {};
+    if (req.query.status && typeof req.query.status === 'string') {
+      where.verificationStatus = req.query.status.toUpperCase();
+    }
+    if (req.query.role && typeof req.query.role === 'string') {
+      where.requestedRole = req.query.role.toUpperCase();
+    }
+    if (typeof req.query.q === 'string' && req.query.q.trim() !== '') {
+      const q = req.query.q.trim().slice(0, 100);
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { studentId: { contains: q, mode: 'insensitive' } },
+        { department: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          role: true,
+          requestedRole: true,
+          verificationStatus: true,
+          gender: true,
+          department: true,
+          designation: true,
+          studentId: true,
+          enrollmentNo: true,
+          course: true,
+          yearOrSemester: true,
+          residencyType: true,
+          hostelName: true,
+          roomOrOffice: true,
+          guardBadgeId: true,
+          assignedZone: true,
+          shift: true,
+          rejectionReason: true,
+          reviewedBy: true,
+          reviewedAt: true,
+          createdAt: true,
+        },
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        items,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/admin/verifications/:id/review
+// Body: { action: 'APPROVE' | 'REJECT' | 'RESUBMIT', role, rejectionReason, reviewerNotes }
+async function reviewVerification(req, res, next) {
+  try {
+    const userId = req.params.id;
+    const { action, role, rejectionReason, reviewerNotes } = req.body || {};
+
+    const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!targetUser) throw notFound('User account not found.', 'USER_NOT_FOUND');
+
+    const validActions = ['APPROVE', 'REJECT', 'RESUBMIT'];
+    if (!validActions.includes(String(action).toUpperCase())) {
+      throw unprocessable('Action must be APPROVE, REJECT, or RESUBMIT.', 'INVALID_ACTION');
+    }
+
+    const normalizedAction = String(action).toUpperCase();
+    const updateData = {
+      reviewedBy: req.user.id,
+      reviewedAt: new Date(),
+    };
+
+    let assignedRole = targetUser.role;
+
+    if (normalizedAction === 'APPROVE') {
+      const allowedRoles = ['STUDENT', 'FACULTY', 'WARDEN', 'SECURITY', 'STAFF', 'SENSITIVE_OFFICER', 'RESPONDER', 'ADMIN'];
+      assignedRole = role && allowedRoles.includes(String(role).toUpperCase())
+        ? String(role).toUpperCase()
+        : (targetUser.requestedRole && allowedRoles.includes(targetUser.requestedRole) ? targetUser.requestedRole : 'STUDENT');
+
+      updateData.role = assignedRole;
+      updateData.isVerified = true;
+      updateData.verificationStatus = 'APPROVED';
+      updateData.rejectionReason = null;
+
+      // In-app alert
+      await prisma.notification.create({
+        data: {
+          userId: targetUser.id,
+          type: 'SYSTEM',
+          title: 'Campus Verification Approved 🎉',
+          body: `Your identity has been verified. You now have full access with role: ${assignedRole}.`,
+        },
+      }).catch(() => {});
+    } else if (normalizedAction === 'REJECT') {
+      updateData.verificationStatus = 'REJECTED';
+      updateData.rejectionReason = rejectionReason || 'Verification request was rejected by administration.';
+
+      await prisma.notification.create({
+        data: {
+          userId: targetUser.id,
+          type: 'SYSTEM',
+          title: 'Verification Request Update ⚠️',
+          body: `Your verification request was not approved: ${updateData.rejectionReason}`,
+        },
+      }).catch(() => {});
+    } else if (normalizedAction === 'RESUBMIT') {
+      updateData.verificationStatus = 'RESUBMIT_REQUIRED';
+      updateData.rejectionReason = rejectionReason || 'Please resubmit your verification details with valid college credentials.';
+
+      await prisma.notification.create({
+        data: {
+          userId: targetUser.id,
+          type: 'SYSTEM',
+          title: 'Verification Resubmission Requested 📝',
+          body: updateData.rejectionReason,
+        },
+      }).catch(() => {});
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+    });
+
+    // Immutable audit log
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user.id,
+        action: `VERIFICATION_${normalizedAction}`,
+        targetId: userId,
+        targetType: 'USER',
+        details: {
+          previousStatus: targetUser.verificationStatus,
+          newStatus: updateData.verificationStatus,
+          assignedRole,
+          reviewerNotes: reviewerNotes || null,
+          rejectionReason: updateData.rejectionReason || null,
+        },
+      },
+    }).catch(() => {});
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: `Verification ${normalizedAction.toLowerCase()}d successfully.`,
+        user: {
+          id: updated.id,
+          name: updated.name,
+          email: updated.email,
+          role: updated.role,
+          verificationStatus: updated.verificationStatus,
+          reviewedBy: updated.reviewedBy,
+          reviewedAt: updated.reviewedAt,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/admin/users/:id/role
+// Body: { role, designation, department }
+async function updateUserRole(req, res, next) {
+  try {
+    const userId = req.params.id;
+    const { role, designation, department } = req.body || {};
+
+    const allowedRoles = ['STUDENT', 'FACULTY', 'WARDEN', 'SECURITY', 'STAFF', 'SENSITIVE_OFFICER', 'RESPONDER', 'ADMIN', 'SYSTEM_ADMIN'];
+    if (!role || !allowedRoles.includes(String(role).toUpperCase())) {
+      throw unprocessable(`Role must be one of: ${allowedRoles.join(', ')}`, 'INVALID_ROLE');
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!targetUser) throw notFound('User not found.', 'USER_NOT_FOUND');
+
+    const updateData = { role: String(role).toUpperCase() };
+    if (designation && typeof designation === 'string') updateData.designation = designation.trim().slice(0, 80);
+    if (department && typeof department === 'string') updateData.department = department.trim().slice(0, 80);
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user.id,
+        action: 'ROLE_PROMOTED',
+        targetId: userId,
+        targetType: 'USER',
+        details: { previousRole: targetUser.role, newRole: updateData.role },
+      },
+    }).catch(() => {});
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: `User role updated to ${updateData.role}.`,
+        user: {
+          id: updated.id,
+          name: updated.name,
+          email: updated.email,
+          role: updated.role,
+          designation: updated.designation,
+          department: updated.department,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/admin/audit-logs
+async function listAuditLogs(req, res, next) {
+  try {
+    const { page, limit, skip, take } = parsePagination(req.query);
+    const where = {};
+    if (req.query.action && typeof req.query.action === 'string') {
+      where.action = req.query.action.trim();
+    }
+    if (req.query.actorId && typeof req.query.actorId === 'string') {
+      where.actorId = req.query.actorId.trim();
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: { actor: { select: { id: true, name: true, email: true, role: true } } },
+      }),
+      prisma.auditLog.count({ where }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: { items, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  getAnalytics,
+  listUsers,
+  listVerifications,
+  reviewVerification,
+  updateUserRole,
+  listAuditLogs,
+};

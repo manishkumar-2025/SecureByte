@@ -8,6 +8,7 @@ const app = createApp();
 /** Deletes all rows in FK-safe order. Called between tests. */
 async function resetDb() {
   await prisma.dispatchLog.deleteMany();
+  await prisma.auditLog.deleteMany();
   await prisma.deviceSession.deleteMany();
   await prisma.verificationOtp.deleteMany();
   await prisma.notification.deleteMany();

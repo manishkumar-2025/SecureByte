@@ -1,5 +1,5 @@
 const { validateBody, rules } = require('../middleware/validate');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, STAFF_ROLES } = require('../middleware/auth');
 const { listIncidents, updateIncidentStatus } = require('../controllers/responderController');
 const { createAnnouncement } = require('../controllers/announcementController');
 const { getAnalytics } = require('../controllers/adminController');
@@ -8,10 +8,10 @@ const { STATUSES, SEVERITIES } = require('../utils/constants');
 
 const router = require('express').Router();
 
-// Every route below requires a valid JWT AND a staff role (RESPONDER or
-// ADMIN), verified against the database record — not a client-asserted
-// value. ADMIN intentionally inherits the full responder surface.
-router.use(requireAuth, requireRole('RESPONDER', 'ADMIN'));
+// Every route below requires a valid JWT AND a staff role (RESPONDER,
+// ADMIN, SECURITY, WARDEN, FACULTY, STAFF, SENSITIVE_OFFICER, SYSTEM_ADMIN), verified
+// against the database record. ADMIN intentionally inherits full oversight.
+router.use(requireAuth, requireRole(...(STAFF_ROLES || ['RESPONDER', 'ADMIN'])));
 
 router.get('/incidents', listIncidents);
 router.get('/analytics', getAnalytics);

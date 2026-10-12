@@ -33,7 +33,7 @@ export default function Button({
     if (variant === 'danger') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
     } else {
-      Haptics.selectionAsync().catch(() => {});
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
     if (onPress) onPress();
   };
@@ -47,6 +47,7 @@ export default function Button({
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       style={({ pressed }) => [
         base.wrapper,
+        small && base.smallWrapper,
         v.wrapper,
         !isDisabled && pressed && !reducedMotion && base.pressed,
         isDisabled && base.disabled,
@@ -54,7 +55,7 @@ export default function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={v.spinner} />
+        <ActivityIndicator color={v.spinner} size={small ? 'small' : 'small'} />
       ) : (
         <Text style={[base.title, v.title, small && base.smallTitle]}>
           {icon ? `${icon}  ` : ''}
@@ -75,36 +76,60 @@ const base = StyleSheet.create({
     paddingVertical: 12,
     flexDirection: 'row',
   },
-  pressed: { opacity: 0.88, transform: [{ scale: 0.985 }] },
+  smallWrapper: {
+    minHeight: 38,
+    paddingHorizontal: spacing.m,
+    paddingVertical: 8,
+    borderRadius: radius.s,
+  },
+  pressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
   disabled: { opacity: 0.45 },
-  title: { ...type.bodyStrong, fontSize: 15.5, letterSpacing: 0.1 },
-  smallTitle: { fontSize: 14 },
+  title: { ...type.bodyStrong, fontSize: 15, letterSpacing: 0.2 },
+  smallTitle: { fontSize: 13, fontWeight: '700' },
 });
 
 const VARIANTS = (c) => ({
   primary: StyleSheet.create({
-    wrapper: { backgroundColor: c.primary },
-    title: { color: c.onPrimary },
+    wrapper: {
+      backgroundColor: c.primary,
+      elevation: 2,
+      shadowColor: c.primary,
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+    },
+    title: { color: c.onPrimary, fontWeight: '700' },
     spinner: c.onPrimary,
   }),
   danger: StyleSheet.create({
-    wrapper: { backgroundColor: c.danger },
-    title: { color: '#FFFFFF', fontSize: 17 },
+    wrapper: {
+      backgroundColor: c.danger,
+      elevation: 4,
+      shadowColor: c.danger,
+      shadowOpacity: 0.35,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    title: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
     spinner: '#FFFFFF',
   }),
   outline: StyleSheet.create({
     wrapper: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: c.primary },
-    title: { color: c.primary },
+    title: { color: c.primary, fontWeight: '700' },
     spinner: c.primary,
   }),
   ghost: StyleSheet.create({
     wrapper: { backgroundColor: 'transparent' },
-    title: { color: c.primary },
+    title: { color: c.primary, fontWeight: '700' },
     spinner: c.primary,
   }),
   subtle: StyleSheet.create({
-    wrapper: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border },
-    title: { color: c.text },
+    wrapper: {
+      backgroundColor: c.primarySoft,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    title: { color: c.primaryDark || c.primary, fontWeight: '700' },
     spinner: c.primary,
   }),
 });

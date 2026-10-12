@@ -25,7 +25,7 @@ import Card, { SectionTitle } from '../src/components/Card';
 import Button from '../src/components/Button';
 import Input from '../src/components/Input';
 import PressableScale from '../src/components/PressableScale';
-import { RoleBadge } from '../src/components/Badges';
+import { RoleBadge, VerificationBadge } from '../src/components/Badges';
 import { ErrorBanner } from '../src/components/Feedback';
 import { useConfirm } from '../src/components/ConfirmDialog';
 import { useToast } from '../src/components/Toast';
@@ -308,14 +308,22 @@ function Profile() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.name, { color: c.text }]}>{user?.name}</Text>
             <Text style={[styles.email, { color: c.sub }]}>{user?.email}</Text>
-            <View style={{ marginTop: spacing.s }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.s, flexWrap: 'wrap' }}>
               <RoleBadge role={user?.role} />
+              <VerificationBadge status={user?.verificationStatus} />
             </View>
           </View>
         </Card>
 
-        {/* ── Verified Student / Campus Credentials ── */}
-        <SectionTitle>Campus credentials</SectionTitle>
+        {/* ── Verified Campus Credentials ── */}
+        <View style={styles.sectionHeaderRow}>
+          <SectionTitle>Campus credentials</SectionTitle>
+          <PressableScale onPress={() => router.push('/verification')} accessibilityLabel="Manage verification details">
+            <View style={[styles.editMedPill, { backgroundColor: c.cardElevated, borderColor: c.primary }]}>
+              <Text style={[styles.editMedPillText, { color: c.primary }]}>📋 Verification Portal</Text>
+            </View>
+          </PressableScale>
+        </View>
         <Card>
           <View style={styles.credentialGrid}>
             <View style={styles.credItem}>
@@ -323,16 +331,34 @@ function Profile() {
               <Text style={[styles.credVal, { color: c.text }]}>BIT Sindri, Dhanbad</Text>
             </View>
             <View style={styles.credItem}>
-              <Text style={[styles.credLabel, { color: c.faint }]}>STUDENT ROLL NO</Text>
-              <Text style={[styles.credVal, { color: c.text }]}>22/CS/042 (B.Tech)</Text>
+              <Text style={[styles.credLabel, { color: c.faint }]}>CAMPUS ID / ROLL</Text>
+              <Text style={[styles.credVal, { color: c.text }]}>
+                {user?.studentId || 'Not submitted yet'}
+              </Text>
             </View>
             <View style={styles.credItem}>
-              <Text style={[styles.credLabel, { color: c.faint }]}>HOSTEL & ROOM</Text>
-              <Text style={[styles.credVal, { color: c.text }]}>Senior Hostel 8, Room 214</Text>
+              <Text style={[styles.credLabel, { color: c.faint }]}>DEPARTMENT</Text>
+              <Text style={[styles.credVal, { color: c.text }]}>
+                {user?.department || 'General Campus'}
+              </Text>
             </View>
+            <View style={styles.credItem}>
+              <Text style={[styles.credLabel, { color: c.faint }]}>DESIGNATION</Text>
+              <Text style={[styles.credVal, { color: c.text }]}>
+                {user?.designation || (user?.role === 'STUDENT' ? 'Student' : user?.role)}
+              </Text>
+            </View>
+            {user?.hostelName || user?.roomOrOffice ? (
+              <View style={styles.credItem}>
+                <Text style={[styles.credLabel, { color: c.faint }]}>HOSTEL / OFFICE</Text>
+                <Text style={[styles.credVal, { color: c.text }]}>
+                  {user?.hostelName || user?.roomOrOffice}
+                </Text>
+              </View>
+            ) : null}
             <View style={styles.credItem}>
               <Text style={[styles.credLabel, { color: c.faint }]}>SAFETY STATUS</Text>
-              <Text style={[styles.credVal, { color: c.success }]}>● Active CampusShield Protection</Text>
+              <Text style={[styles.credVal, { color: c.success }]}>● Active SecureByte Protection</Text>
             </View>
           </View>
         </Card>
@@ -689,30 +715,42 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: { padding: spacing.l, paddingBottom: spacing.xxl, maxWidth: 640, width: '100%', alignSelf: 'center' },
-  userCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.m },
-  avatar: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 26, fontWeight: '800' },
-  name: { ...type.headline, fontSize: 18 },
-  email: { fontSize: 13.5, marginTop: 2 },
-  credentialGrid: { gap: 10 },
+  userCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.l },
+  avatar: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  avatarText: { fontSize: 28, fontWeight: '800' },
+  name: { ...type.headline, fontSize: 19, letterSpacing: -0.3 },
+  email: { fontSize: 13.5, marginTop: 3 },
+  credentialGrid: { gap: 12 },
   credItem: { paddingBottom: 6 },
-  credLabel: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.5 },
-  credVal: { fontSize: 13.5, fontWeight: '600', marginTop: 2 },
+  credLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  credVal: { fontSize: 14, fontWeight: '600', marginTop: 3 },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: spacing.m,
+    marginTop: spacing.l,
+    marginBottom: spacing.s,
   },
   editMedPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: 1.2,
   },
   editMedPillText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 12.5,
+    fontWeight: '800',
   },
   medHeaderRow: {
     flexDirection: 'row',

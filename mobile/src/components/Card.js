@@ -50,5 +50,5 @@ const styles = StyleSheet.create({
     marginBottom: spacing.s,
     marginTop: spacing.xl,
   },
-  section: { ...type.headline, fontSize: 16.5, letterSpacing: -0.2 },
+  section: { ...type.headline, fontSize: 17, letterSpacing: -0.3, fontWeight: '800' },
 });

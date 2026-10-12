@@ -41,14 +41,14 @@ export default function Input({ label, error, hint, secureTextEntry = false, sty
 
 const styles = StyleSheet.create({
   container: { marginBottom: spacing.m },
-  label: { ...type.caption, fontWeight: '700', marginBottom: 6 },
+  label: { ...type.caption, fontWeight: '700', marginBottom: 6, letterSpacing: 0.2 },
   input: {
     minHeight: touchMin,
-    borderWidth: 1,
+    borderWidth: 1.2,
     borderRadius: radius.m,
-    paddingHorizontal: spacing.m,
+    paddingHorizontal: spacing.l,
     fontSize: 15,
   },
   hint: { fontSize: 12, marginTop: 4 },
-  error: { fontSize: 12.5, marginTop: 4, fontWeight: '600' },
+  error: { fontSize: 12.5, marginTop: 5, fontWeight: '600' },
 });

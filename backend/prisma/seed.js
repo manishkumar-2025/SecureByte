@@ -8,12 +8,35 @@ const bcrypt = require('bcryptjs');
 
 const prisma = new PrismaClient();
 
-async function upsertUser({ name, email, password, role }) {
+async function upsertUser({ name, email, password, role, department, designation, studentId, hostelName, assignedZone }) {
   const passwordHash = await bcrypt.hash(password, Number(process.env.BCRYPT_ROUNDS) || 10);
   return prisma.user.upsert({
     where: { email },
-    update: { name, role, passwordHash },
-    create: { name, email, passwordHash, role },
+    update: {
+      name,
+      role,
+      passwordHash,
+      department: department || null,
+      designation: designation || null,
+      studentId: studentId || null,
+      hostelName: hostelName || null,
+      assignedZone: assignedZone || null,
+      isVerified: true,
+      verificationStatus: 'APPROVED',
+    },
+    create: {
+      name,
+      email,
+      passwordHash,
+      role,
+      department: department || null,
+      designation: designation || null,
+      studentId: studentId || null,
+      hostelName: hostelName || null,
+      assignedZone: assignedZone || null,
+      isVerified: true,
+      verificationStatus: 'APPROVED',
+    },
   });
 }
 
@@ -25,24 +48,83 @@ async function main() {
     email: 'student@securebyte.dev',
     password: 'Student@123',
     role: 'STUDENT',
+    department: 'Computer Science & Engineering',
+    designation: 'B.Tech Student',
+    studentId: '2105128',
+    hostelName: 'Aryabhatta Hostel',
   });
   const student2 = await upsertUser({
     name: 'Priya Sharma',
     email: 'priya@securebyte.dev',
     password: 'Student@123',
     role: 'STUDENT',
+    department: 'Information Technology',
+    designation: 'B.Tech Student',
+    studentId: '2105149',
+    hostelName: 'Gargi Girls Hostel',
+  });
+  const faculty = await upsertUser({
+    name: 'Prof. R.K. Verma',
+    email: 'faculty@securebyte.dev',
+    password: 'Faculty@123',
+    role: 'FACULTY',
+    department: 'Computer Science & Engineering',
+    designation: 'Associate Professor & HOD',
+    studentId: 'EMP-FAC-401',
+  });
+  const warden = await upsertUser({
+    name: 'Dr. Rajesh Kumar',
+    email: 'warden@securebyte.dev',
+    password: 'Warden@123',
+    role: 'WARDEN',
+    department: 'Hostel Administration',
+    designation: 'Chief Warden',
+    studentId: 'EMP-WRD-102',
+    hostelName: 'Aryabhatta Hostel',
+  });
+  const security = await upsertUser({
+    name: 'Officer Vikram Singh',
+    email: 'security@securebyte.dev',
+    password: 'Security@123',
+    role: 'SECURITY',
+    department: 'Campus Security & QRT',
+    designation: 'Lead Security Officer',
+    studentId: 'SEC-GRD-08',
+    assignedZone: 'Main Gate & Academic Complex',
+  });
+  const staff = await upsertUser({
+    name: 'S. Mukherjee',
+    email: 'staff@securebyte.dev',
+    password: 'Staff@123',
+    role: 'STAFF',
+    department: 'Central Laboratory & Workshops',
+    designation: 'Senior Technical Assistant',
+    studentId: 'EMP-STF-305',
+  });
+  const sensitiveOfficer = await upsertUser({
+    name: 'Dr. Ananya Sen',
+    email: 'sensitive@securebyte.dev',
+    password: 'Sensitive@123',
+    role: 'SENSITIVE_OFFICER',
+    department: 'Internal Complaints Committee (ICC)',
+    designation: 'Presiding Officer & Grievance Redressal',
+    studentId: 'ICC-OFF-01',
   });
   const responder = await upsertUser({
     name: 'Campus Safety Desk',
     email: 'responder@securebyte.dev',
     password: 'Responder@123',
     role: 'RESPONDER',
+    department: 'Emergency Dispatch',
+    designation: 'Duty Dispatcher',
   });
   const admin = await upsertUser({
     name: 'Safety Admin',
     email: 'admin@securebyte.dev',
     password: 'Admin@12345',
     role: 'ADMIN',
+    department: 'Campus Safety Directorate',
+    designation: 'Campus Safety Administrator',
   });
 
   // Demo personal emergency contacts for the student account.
@@ -144,6 +226,11 @@ async function main() {
   console.log('Seed complete. DEMO ACCOUNTS:');
   console.log('  STUDENT    student@securebyte.dev   / Student@123');
   console.log('  STUDENT    priya@securebyte.dev     / Student@123');
+  console.log('  FACULTY    faculty@securebyte.dev   / Faculty@123');
+  console.log('  WARDEN     warden@securebyte.dev    / Warden@123');
+  console.log('  SECURITY   security@securebyte.dev  / Security@123');
+  console.log('  STAFF      staff@securebyte.dev     / Staff@123');
+  console.log('  SENSITIVE  sensitive@securebyte.dev / Sensitive@123');
   console.log('  RESPONDER  responder@securebyte.dev / Responder@123');
   console.log('  ADMIN      admin@securebyte.dev     / Admin@12345');
   console.log('  These are demonstration credentials only — remove before any real use.');

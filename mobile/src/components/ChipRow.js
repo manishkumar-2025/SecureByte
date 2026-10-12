@@ -5,16 +5,19 @@ import { useTheme } from '../hooks/useTheme';
 import PressableScale from './PressableScale';
 
 /** Horizontal row of selectable filter chips (single-select with "All"). */
-export default function ChipRow({ options, value, onChange }) {
+export default function ChipRow({ options, items, value, onChange, onSelect }) {
   const c = useTheme();
+  const list = options || items || [];
+  const handleSelect = onChange || onSelect || (() => {});
+
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-      {options.map((opt) => {
+      {list.map((opt) => {
         const active = value === opt.value;
         return (
           <PressableScale
             key={opt.value || 'all'}
-            onPress={() => onChange(opt.value)}
+            onPress={() => handleSelect(opt.value)}
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             accessibilityLabel={`Filter: ${opt.label}`}

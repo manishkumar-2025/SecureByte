@@ -12,79 +12,82 @@
 
 export const light = {
   isDark: false,
-  // Brand — trust blue, tuned for outdoor/campus legibility
-  primary: '#2A55E4',
-  primaryDark: '#1D3FB0',
-  primarySoft: '#E4EBFF',
+  // Brand — vivid indigo/ultramarine tuned for outdoor/campus legibility
+  primary: '#2563EB',
+  primaryDark: '#1D4ED8',
+  primarySoft: '#EFF6FF',
   onPrimary: '#FFFFFF',
-  // Danger / SOS
-  danger: '#DC2626',
-  dangerDark: '#991B1B',
+  // Danger / SOS — high-urgency crimson
+  danger: '#EF4444',
+  dangerDark: '#B91C1C',
   dangerSoft: '#FEE2E2',
+  onDanger: '#FFFFFF',
   // Semantic
-  success: '#15803D',
-  successSoft: '#DCFCE7',
-  warning: '#B45309',
+  success: '#10B981',
+  successSoft: '#D1FAE5',
+  warning: '#F59E0B',
   warningSoft: '#FEF3C7',
-  info: '#0369A1',
+  info: '#0284C7',
   infoSoft: '#E0F2FE',
-  purple: '#6D28D9',
+  purple: '#8B5CF6',
   purpleSoft: '#EDE9FE',
-  teal: '#0F766E',
+  teal: '#0D9488',
   tealSoft: '#CCFBF1',
-  // Surfaces
-  background: '#F4F6FB',
+  // Modern Slate/Zinc Surfaces
+  background: '#F8FAFC',
   card: '#FFFFFF',
   cardElevated: '#FFFFFF',
-  border: '#E4E8F1',
-  borderStrong: '#C9D2E3',
-  overlay: 'rgba(15, 23, 42, 0.45)',
+  border: '#E2E8F0',
+  borderStrong: '#CBD5E1',
+  overlay: 'rgba(15, 23, 42, 0.55)',
   // Text
-  text: '#101828',
-  sub: '#4A5568',
-  faint: '#8A94A6',
-  onDanger: '#FFFFFF',
-  skeleton: '#E9EDF5',
+  text: '#0F172A',
+  sub: '#475569',
+  faint: '#94A3B8',
+  skeleton: '#E2E8F0',
 };
 
 export const dark = {
   isDark: true,
-  primary: '#7B96FF',
-  primaryDark: '#5A78F0',
-  primarySoft: '#1E2A4D',
-  onPrimary: '#0B0E14',
+  // Brand — radiant cobalt
+  primary: '#60A5FA',
+  primaryDark: '#3B82F6',
+  primarySoft: '#1E293B',
+  onPrimary: '#0B0F19',
+  // Danger / SOS
   danger: '#F87171',
   dangerDark: '#EF4444',
-  dangerSoft: '#3B1416',
-  success: '#4ADE80',
-  successSoft: '#12291B',
+  dangerSoft: '#37181A',
+  onDanger: '#0B0F19',
+  // Semantic
+  success: '#34D399',
+  successSoft: '#064E3B',
   warning: '#FBBF24',
-  warningSoft: '#33260D',
-  info: '#7DD3FC',
-  infoSoft: '#0C2A3D',
+  warningSoft: '#451A03',
+  info: '#38BDF8',
+  infoSoft: '#0C4A6E',
   purple: '#A78BFA',
-  purpleSoft: '#251C46',
+  purpleSoft: '#2E1065',
   teal: '#2DD4BF',
-  tealSoft: '#0B3330',
-  // OLED-friendly true-dark surfaces
-  background: '#0B0E14',
-  card: '#151A23',
-  cardElevated: '#1B2230',
-  border: '#252D3D',
-  borderStrong: '#38435A',
-  overlay: 'rgba(0, 0, 0, 0.65)',
-  text: '#F2F5FA',
-  sub: '#A6B0C2',
-  faint: '#67718A',
-  onDanger: '#0B0E14',
-  skeleton: '#222939',
+  tealSoft: '#134E4A',
+  // Deep space OLED surfaces
+  background: '#090D16',
+  card: '#131A29',
+  cardElevated: '#1A2234',
+  border: '#222D42',
+  borderStrong: '#334155',
+  overlay: 'rgba(0, 0, 0, 0.75)',
+  text: '#F8FAFC',
+  sub: '#94A3B8',
+  faint: '#64748B',
+  skeleton: '#1E293B',
 };
 
 export const palettes = { light, dark };
 
 // ── Static tokens (colour-independent) ────────────────────────
 export const spacing = { xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 32, xxxl: 48 };
-export const radius = { s: 10, m: 14, l: 20, xl: 28, pill: 999 };
+export const radius = { xs: 6, s: 10, m: 14, l: 18, xl: 24, xxl: 32, pill: 999 };
 export const touchMin = 48;
 
 export const type = {
@@ -93,18 +96,34 @@ export const type = {
   headline: { fontSize: 17, fontWeight: '700' },
   body: { fontSize: 15, fontWeight: '400' },
   bodyStrong: { fontSize: 15, fontWeight: '600' },
-  caption: { fontSize: 12.5, fontWeight: '500' },
+  caption: { fontSize: 13, fontWeight: '500' },
   micro: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
 };
 
-// Soft elevation for premium cards (Android: elevation; iOS: shadow).
+// Polished multi-tier shadows
 export const shadowCard = {
-  elevation: 2,
+  elevation: 3,
   shadowColor: '#0F172A',
-  shadowOpacity: 0.06,
-  shadowRadius: 10,
+  shadowOpacity: 0.08,
+  shadowRadius: 12,
   shadowOffset: { width: 0, height: 4 },
 };
+
+export const shadowSubtle = {
+  elevation: 1,
+  shadowColor: '#0F172A',
+  shadowOpacity: 0.04,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 2 },
+};
+
+export const shadowGlow = (color) => ({
+  elevation: 8,
+  shadowColor: color || '#EF4444',
+  shadowOpacity: 0.4,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 6 },
+});
 
 // ── Domain metadata (palette-aware) ──────────────────────────
 export function statusMeta(c) {

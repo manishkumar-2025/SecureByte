@@ -57,7 +57,7 @@ securebyte/
 │   │                   announcements · profile (prefs) · map · contacts · notifications
 │   ├── assets/         app icon · adaptive icon · splash · favicon
 │   └── src/            api client (silent refresh + multipart upload) · AuthContext ·
-│                       components (toast, confirm dialog, skeletons…) · hooks · theme
+│                       components (toast, confirm dialog, skeletons…) · hooks · theme · utils
 ├── backend/     Express + Prisma + PostgreSQL
 │   ├── prisma/         schema.prisma · migrations/ · seed.js (demo data + safety points)
 │   ├── src/            config · middleware (auth/validation/ratelimit/errors/upload)
@@ -96,14 +96,19 @@ npx expo start                  # scan QR with Expo Go (Android)
 
 ### Demo accounts (seeded)
 
-| Role | Email | Password |
-|------|-------|----------|
-| Student | `student@securebyte.dev` | `Student@123` |
-| Student | `priya@securebyte.dev` | `Student@123` |
-| Responder | `responder@securebyte.dev` | `Responder@123` |
-| Admin | `admin@securebyte.dev` | `Admin@12345` |
+| Role | Persona | Email | Password |
+|------|---------|-------|----------|
+| **Student** | General Student (Boys & Girls) | `student@securebyte.dev` | `Student@123` |
+| **Student** | Resident Scholar (Hostel) | `priya@securebyte.dev` | `Student@123` |
+| **Faculty** | Professor / Academic Staff | `faculty@securebyte.dev` | `Faculty@123` |
+| **Warden** | Hostel In-charge | `warden@securebyte.dev` | `Warden@123` |
+| **Security** | Campus Quick Response Team (QRT) | `security@securebyte.dev` | `Security@123` |
+| **Staff** | College Employee (Labs & Facilities) | `staff@securebyte.dev` | `Staff@123` |
+| **Sensitive Officer** | POSH / Grievance Redressal | `sensitive@securebyte.dev` | `Sensitive@123` |
+| **Responder** | Safety Control Desk | `responder@securebyte.dev` | `Responder@123` |
+| **Admin** | Campus Administrator | `admin@securebyte.dev` | `Admin@12345` |
 
-Demo credentials only — remove before any real use. Additional responders can be provisioned via `POST /api/auth/setup-responder` with the `RESPONDER_SETUP_CODE` (public responder registration intentionally does not exist).
+Demo credentials only — remove before production deployment. Privileged roles (`ADMIN`, `SENSITIVE_OFFICER`, `SYSTEM_ADMIN`) cannot be self-selected via public registration and must be provisioned or promoted by authorized personnel.
 
 ---
 
@@ -121,20 +126,22 @@ Demo credentials only — remove before any real use. Additional responders can 
 | **My Reports** | Student's own list with status filters; incident details with full timeline (who/when/notes) |
 | **Responder console** | SOS-first queue, **free-text search** (title/description/landmark/reporter), filters (status/priority/category/isSos), acknowledge/in-progress/resolve with notes, reporter name, location incl. Google-Maps link |
 | **Announcements** | Responder-authored (INFO/WARNING/CRITICAL), visible to all authenticated users |
-| **UX polish** | **Adaptive light/dark themes** (follow the OS setting live), skeleton shimmer loaders, press-scale micro-interactions, in-app toasts, **confirmation dialogs on every critical action**, haptic feedback (SOS/countdown/status), pull-to-refresh on every list, offline banner (NetInfo), demo-account quick-fill chips, empty states, 48 dp touch targets, **reduced-motion support** (decorative animation disabled when the OS requests it — haptics remain) |
+| **Campus Identity & RBAC (v5)** | **Full campus persona support:** `STUDENT` (boys & girls unified), `FACULTY`, `WARDEN`, `SECURITY`, `STAFF`, `SENSITIVE_OFFICER` (POSH/ICC/grievance), `ADMIN`, and `SYSTEM_ADMIN`. **Multi-step onboarding & verification:** Personal details + role credentials (roll no, branch, dept, hostel/office, guard badge, shifts). **Verification lifecycle:** `UNVERIFIED → PENDING → APPROVED / RESUBMIT_REQUIRED / REJECTED`. **Life-safety non-blocking rule:** SOS alerts are **never blocked** by pending verification (flagged `[UNVERIFIED SENDER]` for staff triage). **Audit trail:** `AuditLog` records every administrative approval, role promotion, and credential change. |
+| **UX & Modern Design System (v4)** | **Adaptive light/dark design system** with curated elevation tokens (`shadowSubtle`, `shadowGlow`), 48 dp touch targets, micro-scaling tactile button haptics, skeleton shimmer loaders, glassmorphism cards, 4-stage incident lifecycle stepper, segmented tabs with animated thumb, POSH confidentiality notices, high-contrast SOS emergency countdown (120px tabular numerals), emergency helpline strip, and **reduced-motion support** |
+| **Network & Outbox Resilience (v4)** | Active multi-tier reachability checking (`isDeviceOffline`), proactive local cache fallbacks for instant screen mounts, resilient parallel fetching (`Promise.allSettled`), and offline queueing preventing false-offline failures |
 | **Safety extras (v3)** | **Emergency contacts** (private per user, max 5, call/SMS quick actions, one-tap SOS broadcast via the SMS app), **safety check-ins** (SAFE / NEEDS HELP with staff alerting), **campus safety map** (schematic pin layout from real coordinates + nearest-help list by GPS distance + Google-Maps navigation), **photo evidence** on reports (picker, upload, in-app viewer, owner-only attach/remove) |
 | **Notification center (v3)** | In-app center with unread badge (30 s polling), type filters, mark one/all read — records are written server-side even when a device was offline, so alerts survive missed pushes; per-category mute preferences (SOS / status updates / announcements) synced to the server and honoured by the push pipeline |
-| **Staff analytics & admin (v3)** | Real aggregated analytics (totals, 7-day trend chart, status/category distribution, average resolution time, check-in counters) computed from live data; ADMIN role (provisioned via seed/DB only — no public endpoint) with campus user directory (sanitized fields, search/role filter); admins inherit the full responder surface |
+| **Staff analytics & admin (v3)** | Real aggregated analytics (totals, 7-day trend chart, status/category distribution, average resolution time, check-in counters) computed from live data; ADMIN role with campus user directory and **dedicated verification triage queue** (1-tap approve/reject/resubmit with notes); admins inherit the full responder surface |
 | **Security** | DB-verified roles on every request, ownership checks (403/404 IDOR protection), express-rate-limit on login/register/refresh/incidents, helmet, CORS allow-list, 16 KB body cap (uploads go through a separate validated multipart path: 5 MB cap, MIME sniffing, server-generated UUID filenames), gzip compression, parameterized Prisma queries, generic errors (no stack traces/leaks), secrets in git-ignored `.env` |
 | **Ops** | Health endpoint with DB latency + uptime + version, graceful shutdown (SIGINT/SIGTERM), request logging, Prisma migrations versioned in git |
-| **Testing** | **80 backend tests passing** (auth, incidents, access control, status transitions, session security, + v3: contacts cap/ownership, check-ins, safety-point geo-sort, notification center, preferences, analytics, admin RBAC, photo upload — run against real PostgreSQL); 16-section live API verification script; Postman collection incl. negative security tests; documented simulated two-device demo |
+| **Testing** | **128 backend tests passing across 10 test suites** (auth, campus verification, incidents, access control, status transitions, session security, contacts cap/ownership, check-ins, safety-point geo-sort, notification center, preferences, analytics, admin RBAC, photo upload, campus map — run against real PostgreSQL); 16-section live API verification script; Postman collection incl. negative security tests; documented simulated two-device demo |
 
 ### 🔜 Planned (honestly not implemented)
 
 - HTTPS deployment + cloud PostgreSQL + custom domain (runs on your LAN today)
 - App-store builds via EAS (signed binaries); push via FCM/APNs credentials
-- Street-level map tiles (react-native-maps + Google Maps API key) — the current map is a **schematic** pin layout over real coordinates, documented in the app
-- Live location streaming & background location; offline outbox queueing for reports
+- Street-level vector map tiles (react-native-maps + Google Maps API key) — the current map is a **schematic** pin layout over real coordinates, documented in the app
+- Live location streaming & background location tracking
 - E2E/UI automation tests for the mobile app; CI workflow
 - Multi-language UI; email verification & forgot-password flow; silent SMS/WhatsApp delivery to contacts (current flow opens YOUR SMS app — no message is sent without you pressing send)
 
@@ -146,16 +153,18 @@ Full request/response documentation: **[docs/API.md](docs/API.md)**.
 
 | Method & path | Access | Purpose |
 |---------------|--------|---------|
-| `POST /api/auth/register` | public | Create STUDENT account |
+| `POST /api/auth/register` | public | Create account (with requested role) |
 | `POST /api/auth/login` | public | Sign in (rate-limited + lockout) |
 | `POST /api/auth/refresh` | refresh token | Rotate tokens silently |
 | `POST /api/auth/logout` | refresh token | Revoke session |
 | `PATCH /api/auth/password` | auth | Change password (signs out other devices) |
 | `GET /api/auth/me` | auth | Current user (fresh from DB) |
+| `POST /api/auth/verification` | auth | Submit institutional verification credentials |
+| `GET /api/auth/verification` | auth | Retrieve verification status & details |
 | `POST /api/auth/setup-responder` | setup code | Controlled RESPONDER provisioning |
-| `POST /api/incidents` | auth | Create report / trigger SOS |
+| `POST /api/incidents` | auth | Create report / trigger SOS (unblocked even if unverified) |
 | `GET /api/incidents/my` | auth | Own reports (+status filter, ?q=) |
-| `GET /api/incidents/:id` | owner/responder | Incident detail + history |
+| `GET /api/incidents/:id` | owner/staff | Incident detail + history (sensitive cases restricted) |
 | `POST /api/incidents/:id/photo` | owner | Attach photo evidence (multipart ≤5 MB) |
 | `DELETE /api/incidents/:id/photo` | owner | Remove photo evidence |
 | `GET /api/contacts` / `POST` | auth | Emergency contacts (private, max 5) |
@@ -168,14 +177,18 @@ Full request/response documentation: **[docs/API.md](docs/API.md)**.
 | `GET /api/notifications/unread-count` | auth | Badge counter |
 | `PATCH /api/notifications/:id/read` · `POST /read-all` | auth | Mark read |
 | `GET/PUT /api/me/preferences` | auth | Notification preferences |
-| `GET /api/responder/incidents` | RESPONDER | Queue with filters + search + pagination |
-| `PATCH /api/responder/incidents/:id/status` | RESPONDER | Status update + audit (transactional) |
-| `GET /api/responder/analytics` | RESPONDER | Real aggregated statistics |
+| `GET /api/responder/incidents` | STAFF_ROLES | Queue with filters + search + pagination |
+| `PATCH /api/responder/incidents/:id/status` | STAFF_ROLES | Status update + audit (transactional) |
+| `GET /api/responder/analytics` | STAFF_ROLES | Real aggregated statistics |
 | `GET /api/announcements` | auth | List announcements |
-| `POST /api/responder/announcements` | RESPONDER | Publish announcement (fans out to center + push) |
+| `POST /api/responder/announcements` | STAFF_ROLES | Publish announcement (fans out to center + push) |
 | `POST /api/devices/push-token` | auth | Register device for push |
 | `DELETE /api/devices/push-token` | auth | Un-register device |
 | `GET /api/admin/users` | ADMIN | User directory (sanitized, ?role, ?q) |
+| `GET /api/admin/verifications` | ADMIN | Verification queue (?status, ?requestedRole, ?q) |
+| `POST /api/admin/verifications/:id/review` | ADMIN | Review verification (`APPROVE`, `REJECT`, `RESUBMIT`) |
+| `PATCH /api/admin/users/:id/role` | ADMIN | Promote or change user role |
+| `GET /api/admin/audit-logs` | ADMIN | Campus administrative audit logs |
 
 **Priority rule (documented, server-enforced):** SOS alerts are always `CRITICAL`; manual reports may choose `LOW/MEDIUM/HIGH` (default `MEDIUM`); clients cannot set `CRITICAL` on non-SOS reports.
 
@@ -184,7 +197,7 @@ Full request/response documentation: **[docs/API.md](docs/API.md)**.
 ## Testing
 
 ```bash
-cd backend && npm test     # 80 tests — latest run: 6 suites, 80 passed, ~5s
+cd backend && npm test     # 128 tests — latest run: 10 suites, 128 passed, ~41s
 ```
 
 Postman: import `postman/CampusShield.postman_collection.json` → run Login Student / Login Responder (tokens auto-save) → run the negative tests folder to demonstrate 401/403/409/422 security behaviour. Full guide incl. the two-device simulated demo and security checklist: **[docs/TESTING.md](docs/TESTING.md)**.

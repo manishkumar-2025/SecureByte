@@ -23,14 +23,24 @@ function passwordStrength(pw) {
 
 const STRENGTH_LABELS = ['Too short', 'Weak', 'Fair', 'Good', 'Strong'];
 
+const ACCOUNT_TYPES = [
+  { id: 'STUDENT', label: 'Student', icon: '🎓', sub: 'UG / PG Scholars (Boys & Girls)' },
+  { id: 'FACULTY', label: 'Faculty / Professor', icon: '👨‍🏫', sub: 'Assistant / Associate / Prof / HOD' },
+  { id: 'WARDEN', label: 'Hostel Warden', icon: '🏢', sub: 'Hostel In-charge & Supervisors' },
+  { id: 'SECURITY', label: 'Campus Security', icon: '🛡️', sub: 'Patrol Guards & Emergency Response' },
+  { id: 'STAFF', label: 'College Staff', icon: '💼', sub: 'Lab, Workshop, Library & Admin' },
+];
+
 export default function Register() {
   const { register } = useAuth();
   const c = useTheme();
   const toast = useToast();
   const router = useRouter();
 
+  const [requestedRole, setRequestedRole] = useState('STUDENT');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -56,9 +66,9 @@ export default function Register() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      await register(name.trim(), email.trim().toLowerCase(), password);
-      toast.success('Welcome to CampusShield', 'Your student account is active.');
-      router.replace('/home');
+      await register(name.trim(), email.trim().toLowerCase(), password, phone.trim() || null, requestedRole);
+      toast.success('Account Created', 'Complete your verification to activate role privileges.');
+      router.replace('/verification');
     } catch (e) {
       setError(e.message);
       if (e.details) setFieldErrors(e.details);
@@ -71,29 +81,63 @@ export default function Register() {
     <SafeAreaView style={[styles.safe, { backgroundColor: c.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'android' ? undefined : 'padding'} style={{ flex: 1 }}>
         <ScrollView
-          contentContainerStyle={[styles.scroll, { maxWidth: 480, width: '100%', alignSelf: 'center' }]}
+          contentContainerStyle={[styles.scroll, { maxWidth: 500, width: '100%', alignSelf: 'center' }]}
           keyboardShouldPersistTaps="handled"
         >
-          <ScreenHeader title="Create student account" subtitle="BIT Sindri Campus Safety Network" onBack={true} fallbackRoute="/login" />
+          <ScreenHeader title="Create campus account" subtitle="SecureByte — Campus-wide Safety Network" onBack={true} fallbackRoute="/login" />
 
           <ErrorBanner message={error} />
 
+          {/* Account Type Selector */}
+          <Text style={[styles.sectionLabel, { color: c.text }]}>Select Account Type</Text>
+          <View style={styles.roleGrid}>
+            {ACCOUNT_TYPES.map((t) => {
+              const active = requestedRole === t.id;
+              return (
+                <Pressable
+                  key={t.id}
+                  onPress={() => setRequestedRole(t.id)}
+                  style={[
+                    styles.roleCard,
+                    {
+                      backgroundColor: active ? (c.isDark ? '#1E293B' : '#EFF6FF') : c.card,
+                      borderColor: active ? c.primary : c.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.roleHeader}>
+                    <Text style={styles.roleIcon}>{t.icon}</Text>
+                    <Text style={[styles.roleTitle, { color: active ? c.primary : c.text }]}>{t.label}</Text>
+                  </View>
+                  <Text style={[styles.roleSub, { color: c.sub }]}>{t.sub}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           <Input
             label="Full Name"
-            placeholder="e.g. Ayush Kumar"
+            placeholder="e.g. Dr. Rajesh Kumar / Ayush"
             value={name}
             onChangeText={setName}
             error={fieldErrors.name}
             autoCapitalize="words"
           />
           <Input
-            label="College Email"
-            placeholder="you@securebyte.dev"
+            label="College / Official Email"
+            placeholder="name@securebyte.dev"
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
             error={fieldErrors.email}
+          />
+          <Input
+            label="Mobile Number (Optional)"
+            placeholder="+91 98765 43210"
+            keyboardType="phone-pad"
+            value={phone}
+            onChangeText={setPhone}
           />
           <Input
             label="Password"
@@ -131,7 +175,12 @@ export default function Register() {
             error={fieldErrors.confirm}
           />
 
-          <Button title={submitting ? 'Registering credentials…' : 'Register Student Account'} onPress={submit} loading={submitting} style={{ marginTop: spacing.s }} />
+          <Button
+            title={submitting ? 'Registering credentials…' : `Register as ${ACCOUNT_TYPES.find((t) => t.id === requestedRole)?.label}`}
+            onPress={submit}
+            loading={submitting}
+            style={{ marginTop: spacing.s }}
+          />
 
           <View style={styles.loginRow}>
             <Text style={[styles.loginText, { color: c.sub }]}>Already have an account? </Text>
@@ -141,9 +190,9 @@ export default function Register() {
           </View>
 
           <View style={[styles.noteCard, { backgroundColor: c.card, borderColor: c.border }]}>
-            <Text style={[styles.noteTitle, { color: c.text }]}>Student Safety Protection Privileges</Text>
+            <Text style={[styles.noteTitle, { color: c.text }]}>🔒 Institutional Verification Policy</Text>
             <Text style={[styles.noteLine, { color: c.sub }]}>
-              Registration activates 1-tap SOS alerts, confidential incident reporting, night walk escort sessions, and access to campus emergency contact auto-alerts.
+              After creating your account, submit your student/employee credentials for quick administrative approval. Privileged roles (College Admin & Sensitive Case Officer) are strictly assigned by authority.
             </Text>
           </View>
         </ScrollView>
@@ -155,18 +204,29 @@ export default function Register() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: { padding: spacing.xl, paddingBottom: spacing.xxl },
-  strengthRow: { flexDirection: 'row', alignItems: 'center', marginTop: -6, marginBottom: spacing.m },
-  strengthTrack: { flex: 1, height: 5, borderRadius: 3, marginRight: spacing.s, overflow: 'hidden' },
-  strengthLabel: { fontSize: 11.5, fontWeight: '700', minWidth: 64, textAlign: 'right' },
-  loginRow: { flexDirection: 'row', justifyContent: 'center', marginTop: spacing.l },
-  loginText: { fontSize: 14 },
-  loginLink: { fontWeight: '700', fontSize: 14 },
+  strengthRow: { flexDirection: 'row', alignItems: 'center', marginTop: -4, marginBottom: spacing.m },
+  strengthTrack: { flex: 1, height: 6, borderRadius: 3, marginRight: spacing.s, overflow: 'hidden' },
+  strengthLabel: { fontSize: 12, fontWeight: '700', minWidth: 68, textAlign: 'right' },
+  loginRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: spacing.xl },
+  loginText: { fontSize: 14.5 },
+  loginLink: { fontWeight: '800', fontSize: 14.5 },
   noteCard: {
     marginTop: spacing.xl,
     borderRadius: radius.l,
     borderWidth: 1,
+    padding: spacing.l,
+  },
+  noteTitle: { fontWeight: '800', fontSize: 13.5, marginBottom: 6, letterSpacing: -0.1 },
+  noteLine: { fontSize: 13, lineHeight: 19 },
+  sectionLabel: { fontSize: 13.5, fontWeight: '700', marginBottom: spacing.xs, textTransform: 'uppercase', letterSpacing: 0.5 },
+  roleGrid: { gap: 8, marginBottom: spacing.m },
+  roleCard: {
+    borderRadius: radius.m,
+    borderWidth: 1.5,
     padding: spacing.m,
   },
-  noteTitle: { fontWeight: '700', fontSize: 13, marginBottom: 6 },
-  noteLine: { fontSize: 12.5, lineHeight: 19 },
+  roleHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  roleIcon: { fontSize: 16, marginRight: 8 },
+  roleTitle: { fontSize: 14.5, fontWeight: '800' },
+  roleSub: { fontSize: 12, marginLeft: 24 },
 });

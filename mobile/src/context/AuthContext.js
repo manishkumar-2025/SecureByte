@@ -127,10 +127,27 @@ export function AuthProvider({ children }) {
   );
 
   const register = useCallback(
-    async (name, email, password) =>
-      persist(await api('/api/auth/register', { method: 'POST', body: { name, email, password } })),
+    async (name, email, password, phone = null, requestedRole = 'STUDENT') =>
+      persist(
+        await api('/api/auth/register', {
+          method: 'POST',
+          body: { name, email, password, phone, requestedRole },
+        })
+      ),
     [persist]
   );
+
+  const refreshProfile = useCallback(async () => {
+    try {
+      const data = await api('/api/auth/me');
+      if (data && data.user) {
+        setUser(data.user);
+        await storage.setItem(USER_KEY, JSON.stringify(data.user));
+        return data.user;
+      }
+    } catch (e) {}
+    return null;
+  }, []);
 
   const signOut = useCallback(async () => {
     const refresh = await storage.getItem(REFRESH_KEY).catch(() => null);
@@ -162,8 +179,8 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   const value = useMemo(
-    () => ({ user, initializing, signIn, register, signOut, updateNotificationPrefs }),
-    [user, initializing, signIn, register, signOut, updateNotificationPrefs]
+    () => ({ user, initializing, signIn, register, signOut, refreshProfile, updateNotificationPrefs }),
+    [user, initializing, signIn, register, signOut, refreshProfile, updateNotificationPrefs]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

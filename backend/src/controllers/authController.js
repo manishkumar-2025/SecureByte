@@ -15,6 +15,25 @@ function safeUser(user) {
     email: user.email,
     phone: user.phone || null,
     role: user.role,
+    requestedRole: user.requestedRole || user.role,
+    verificationStatus: user.verificationStatus || (user.isVerified ? 'APPROVED' : 'UNVERIFIED'),
+    gender: user.gender || null,
+    department: user.department || null,
+    designation: user.designation || null,
+    studentId: user.studentId || null,
+    enrollmentNo: user.enrollmentNo || null,
+    course: user.course || null,
+    yearOrSemester: user.yearOrSemester || null,
+    residencyType: user.residencyType || null,
+    hostelName: user.hostelName || null,
+    roomOrOffice: user.roomOrOffice || null,
+    guardBadgeId: user.guardBadgeId || null,
+    assignedZone: user.assignedZone || null,
+    shift: user.shift || null,
+    idProofUrl: user.idProofUrl || null,
+    rejectionReason: user.rejectionReason || null,
+    reviewedBy: user.reviewedBy || null,
+    reviewedAt: user.reviewedAt || null,
     emailVerified: Boolean(user.emailVerified),
     phoneVerified: Boolean(user.phoneVerified),
     isVerified: Boolean(user.isVerified),
@@ -83,9 +102,9 @@ async function rotateRefreshToken(raw) {
   return { user: record.user, refreshToken: nextRaw };
 }
 
-// POST /api/auth/register — public. ALWAYS creates a STUDENT account;
-// the role field is hardcoded server-side, so a client cannot register
-// as a responder.
+// POST /api/auth/register — public. Base role is STUDENT.
+// Clients can specify a requested campus account type (STUDENT, FACULTY, WARDEN, SECURITY, STAFF).
+// Privileged administrative roles are granted solely after approval by College Admin.
 async function register(req, res, next) {
   try {
     const { name, email, password } = req.validated;
@@ -94,6 +113,12 @@ async function register(req, res, next) {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       throw conflict('An account with this email already exists. Try signing in instead.', 'EMAIL_IN_USE');
+    }
+
+    const allowedSelfRoles = ['STUDENT', 'FACULTY', 'WARDEN', 'SECURITY', 'STAFF'];
+    let requestedRole = 'STUDENT';
+    if (req.body && req.body.requestedRole && allowedSelfRoles.includes(String(req.body.requestedRole).toUpperCase())) {
+      requestedRole = String(req.body.requestedRole).toUpperCase();
     }
 
     const passwordHash = await hashPassword(password);
@@ -105,6 +130,8 @@ async function register(req, res, next) {
         phone,
         passwordHash,
         role: 'STUDENT',
+        requestedRole,
+        verificationStatus: requireVerif ? 'PENDING' : 'APPROVED',
         isVerified: !requireVerif,
         emailVerified: !requireVerif,
         phoneVerified: !requireVerif,
@@ -354,23 +381,186 @@ async function verifyOtpEndpoint(req, res, next) {
   }
 }
 
+// POST /api/auth/verification — authenticated
+// Allows user to submit college credentials & verification details.
+async function submitVerification(req, res, next) {
+  try {
+    const {
+      fullName,
+      phone,
+      gender,
+      requestedRole,
+      studentId,
+      enrollmentNo,
+      department,
+      designation,
+      course,
+      yearOrSemester,
+      residencyType,
+      hostelName,
+      roomOrOffice,
+      guardBadgeId,
+      assignedZone,
+      shift,
+      idProofUrl,
+      emergencyContact,
+    } = req.body || {};
+
+    const allowedSelfRoles = ['STUDENT', 'FACULTY', 'WARDEN', 'SECURITY', 'STAFF'];
+    const validRequestedRole = requestedRole && allowedSelfRoles.includes(String(requestedRole).toUpperCase())
+      ? String(requestedRole).toUpperCase()
+      : (req.user.requestedRole || 'STUDENT');
+
+    const updateData = {
+      verificationStatus: 'PENDING',
+      requestedRole: validRequestedRole,
+      rejectionReason: null, // clear previous rejection on resubmission
+    };
+
+    if (fullName && typeof fullName === 'string' && fullName.trim().length >= 2) {
+      updateData.name = fullName.trim().slice(0, 80);
+    }
+    if (phone && typeof phone === 'string' && phone.trim()) {
+      updateData.phone = phone.trim().slice(0, 20);
+    }
+    if (gender && typeof gender === 'string') {
+      updateData.gender = gender.trim().slice(0, 30);
+    }
+    if (studentId && typeof studentId === 'string') {
+      updateData.studentId = studentId.trim().slice(0, 50);
+    }
+    if (enrollmentNo && typeof enrollmentNo === 'string') {
+      updateData.enrollmentNo = enrollmentNo.trim().slice(0, 50);
+    }
+    if (department && typeof department === 'string') {
+      updateData.department = department.trim().slice(0, 80);
+    }
+    if (designation && typeof designation === 'string') {
+      updateData.designation = designation.trim().slice(0, 80);
+    }
+    if (course && typeof course === 'string') {
+      updateData.course = course.trim().slice(0, 50);
+    }
+    if (yearOrSemester && typeof yearOrSemester === 'string') {
+      updateData.yearOrSemester = yearOrSemester.trim().slice(0, 50);
+    }
+    if (residencyType && typeof residencyType === 'string') {
+      updateData.residencyType = residencyType.trim().slice(0, 30);
+    }
+    if (hostelName && typeof hostelName === 'string') {
+      updateData.hostelName = hostelName.trim().slice(0, 80);
+    }
+    if (roomOrOffice && typeof roomOrOffice === 'string') {
+      updateData.roomOrOffice = roomOrOffice.trim().slice(0, 80);
+    }
+    if (guardBadgeId && typeof guardBadgeId === 'string') {
+      updateData.guardBadgeId = guardBadgeId.trim().slice(0, 50);
+    }
+    if (assignedZone && typeof assignedZone === 'string') {
+      updateData.assignedZone = assignedZone.trim().slice(0, 80);
+    }
+    if (shift && typeof shift === 'string') {
+      updateData.shift = shift.trim().slice(0, 30);
+    }
+    if (idProofUrl && typeof idProofUrl === 'string') {
+      updateData.idProofUrl = idProofUrl.trim().slice(0, 255);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updateData,
+    });
+
+    // Optionally attach emergency contact if submitted together
+    if (emergencyContact && emergencyContact.name && emergencyContact.phone) {
+      const normalizedPhone = String(emergencyContact.phone).replace(/[^\d+]/g, '');
+      if (normalizedPhone.length >= 7 && normalizedPhone.length <= 16) {
+        await prisma.emergencyContact.create({
+          data: {
+            userId: req.user.id,
+            name: String(emergencyContact.name).trim().slice(0, 80),
+            phone: normalizedPhone,
+            relation: emergencyContact.relation ? String(emergencyContact.relation).trim().slice(0, 40) : 'Emergency Guardian',
+          },
+        }).catch(() => {});
+      }
+    }
+
+    // Record audit log
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user.id,
+        action: 'VERIFICATION_SUBMITTED',
+        targetId: req.user.id,
+        targetType: 'USER',
+        details: {
+          requestedRole: validRequestedRole,
+          department: updateData.department,
+          studentId: updateData.studentId,
+        },
+      },
+    }).catch(() => {});
+
+    // Create confirmation in-app notification
+    await prisma.notification.create({
+      data: {
+        userId: req.user.id,
+        type: 'SYSTEM',
+        title: 'Verification Request Received 📋',
+        body: `Your credentials for the ${validRequestedRole} role have been submitted to College Administration for approval.`,
+      },
+    }).catch(() => {});
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'Verification details submitted successfully. Awaiting administrative review.',
+        user: safeUser(updatedUser),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // GET /api/auth/verification-status — authenticated
 async function verificationStatusEndpoint(req, res, next) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        emailVerified: true,
-        phoneVerified: true,
-        isVerified: true,
-      },
     });
     if (!user) throw unauthorized('User not found.', 'USER_NOT_FOUND');
-    res.status(200).json({ success: true, data: user });
+    res.status(200).json({
+      success: true,
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        requestedRole: user.requestedRole || user.role,
+        verificationStatus: user.verificationStatus || (user.isVerified ? 'APPROVED' : 'UNVERIFIED'),
+        gender: user.gender,
+        department: user.department,
+        designation: user.designation,
+        studentId: user.studentId,
+        enrollmentNo: user.enrollmentNo,
+        course: user.course,
+        yearOrSemester: user.yearOrSemester,
+        residencyType: user.residencyType,
+        hostelName: user.hostelName,
+        roomOrOffice: user.roomOrOffice,
+        guardBadgeId: user.guardBadgeId,
+        assignedZone: user.assignedZone,
+        shift: user.shift,
+        rejectionReason: user.rejectionReason,
+        reviewedBy: user.reviewedBy,
+        reviewedAt: user.reviewedAt,
+        emailVerified: user.emailVerified,
+        phoneVerified: user.phoneVerified,
+        isVerified: user.isVerified,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -387,4 +577,6 @@ module.exports = {
   sendOtpEndpoint,
   verifyOtpEndpoint,
   verificationStatusEndpoint,
+  submitVerification,
+  safeUser,
 };

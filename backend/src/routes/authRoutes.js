@@ -11,6 +11,7 @@ const {
   sendOtpEndpoint,
   verifyOtpEndpoint,
   verificationStatusEndpoint,
+  submitVerification,
 } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/auth');
 
@@ -24,6 +25,7 @@ router.post(
     email: rules.email(),
     password: rules.password(),
     phone: rules.phone({ required: false }),
+    requestedRole: rules.string({ label: 'Requested role', min: 2, max: 30, required: false }),
   }),
   register
 );
@@ -59,6 +61,9 @@ router.post(
   verifyOtpEndpoint
 );
 
+// Campus College Credentials Verification
+router.post('/verification', requireAuth, submitVerification);
+router.get('/verification', requireAuth, verificationStatusEndpoint);
 router.get('/verification-status', requireAuth, verificationStatusEndpoint);
 
 // Silent session renewal. The refresh token is the credential here, so the

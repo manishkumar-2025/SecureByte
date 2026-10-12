@@ -24,6 +24,12 @@ enum Role {
   // (or by promoting an account directly in the database) — there is
   // deliberately NO public endpoint that grants the ADMIN role.
   ADMIN
+  FACULTY
+  WARDEN
+  SECURITY
+  STAFF
+  SENSITIVE_OFFICER
+  SYSTEM_ADMIN
 }
 
 enum CheckInStatus {
@@ -121,6 +127,27 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // Campus Identity & Verification
+  requestedRole      String?   @default("STUDENT")
+  verificationStatus String?   @default("UNVERIFIED")
+  gender             String?
+  department         String?
+  designation        String?
+  studentId          String?
+  enrollmentNo       String?
+  course             String?
+  yearOrSemester     String?
+  residencyType      String?
+  hostelName         String?
+  roomOrOffice       String?
+  guardBadgeId       String?
+  assignedZone       String?
+  shift              String?
+  idProofUrl         String?
+  rejectionReason    String?
+  reviewedBy         String?
+  reviewedAt         DateTime?
+
   incidentsReported Incident[]              @relation("Reporter")
   statusUpdates     IncidentStatusHistory[]
   announcements     Announcement[]
@@ -132,8 +159,10 @@ model User {
   verificationOtps  VerificationOtp[]
   deviceSessions    DeviceSession[]
   dispatchLogs      DispatchLog[]
+  auditLogs         AuditLog[]
 
   @@index([role])
+  @@index([verificationStatus])
   @@map("users")
 }
 
@@ -406,5 +435,24 @@ model DispatchLog {
   @@index([status])
   @@index([recipient])
   @@map("dispatch_logs")
+}
+
+/// System and Security Audit Logs for privileged actions (approvals, role promotions, sensitive investigations)
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  action     String   // e.g. VERIFICATION_APPROVED, VERIFICATION_REJECTED, ROLE_PROMOTED, CONFIDENTIAL_INCIDENT_VIEWED
+  targetId   String?  // user ID or incident ID
+  targetType String?  // USER, INCIDENT, SYSTEM
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([actorId])
+  @@index([action])
+  @@index([targetId])
+  @@map("audit_logs")
 }
 

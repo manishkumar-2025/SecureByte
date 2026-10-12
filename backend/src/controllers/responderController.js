@@ -30,8 +30,9 @@ async function listIncidents(req, res, next) {
       where.isSos = req.query.isSos === 'true';
     }
     // Sensitive / Independent Review filtering:
-    // Non-admin RESPONDERS cannot view sensitive or independent reviewer complaints
-    if (req.user.role !== 'ADMIN') {
+    // Only ADMIN, SENSITIVE_OFFICER, and SYSTEM_ADMIN can view sensitive or independent reviewer complaints
+    const isSensitiveReviewer = req.user.role === 'ADMIN' || req.user.role === 'SENSITIVE_OFFICER' || req.user.role === 'SYSTEM_ADMIN';
+    if (!isSensitiveReviewer) {
       where.independentReviewerOnly = false;
       where.isSensitive = false;
     } else if (req.query.isSensitive === 'true' || req.query.isSensitive === 'false') {
@@ -66,7 +67,7 @@ async function listIncidents(req, res, next) {
 }
 
 /**
- * PATCH /api/responder/incidents/:id/status — RESPONDER / ADMIN.
+ * PATCH /api/responder/incidents/:id/status — RESPONDER / ADMIN / SENSITIVE_OFFICER / SECURITY.
  *
  * Runs inside a single database TRANSACTION: the incident status update and
  * the audit-history entry are written together, or not at all. Invalid
@@ -84,10 +85,11 @@ async function updateIncidentStatus(req, res, next) {
     if (!incident) throw notFound('Incident not found.', 'INCIDENT_NOT_FOUND');
 
     // Sensitive complaints access guard:
-    if ((incident.isSensitive || incident.independentReviewerOnly) && req.user.role !== 'ADMIN') {
+    const canReviewSensitive = req.user.role === 'ADMIN' || req.user.role === 'SENSITIVE_OFFICER' || req.user.role === 'SYSTEM_ADMIN';
+    if ((incident.isSensitive || incident.independentReviewerOnly) && !canReviewSensitive) {
       const { forbidden } = require('../utils/errors');
       throw forbidden(
-        'Only authorized independent reviewers (ADMIN) can update confidential reports.',
+        'Only authorized independent reviewers (ADMIN, SENSITIVE_OFFICER) can update confidential reports.',
         'SENSITIVE_ACCESS_RESTRICTED'
       );
     }

@@ -8,7 +8,7 @@ import * as Device from 'expo-device';
  * Your development machine's active Wi-Fi IPv4 address is auto-detected
  * from Metro bundler, with fallback to your local LAN IP (192.168.1.106).
  */
-export const LAN_IP = '10.22.234.174';
+export const LAN_IP = '10.101.1.174';
 export const API_PORT = 4000;
 
 function extractHostIp() {

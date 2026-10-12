@@ -1,13 +1,21 @@
-const { requireAuth, requireRole } = require('../middleware/auth');
-const { listUsers } = require('../controllers/adminController');
+const { requireAuth, requireRole, ADMIN_ROLES } = require('../middleware/auth');
+const {
+  listUsers,
+  listVerifications,
+  reviewVerification,
+  updateUserRole,
+  listAuditLogs,
+} = require('../controllers/adminController');
 
 const router = require('express').Router();
 
-// ADMIN-only surface. There is deliberately NO public endpoint that
-// grants the ADMIN role — accounts are promoted by seed or directly
-// in the database by an operator.
-router.use(requireAuth, requireRole('ADMIN'));
+// ADMIN & SYSTEM_ADMIN surface.
+router.use(requireAuth, requireRole(...(ADMIN_ROLES || ['ADMIN', 'SYSTEM_ADMIN'])));
 
 router.get('/users', listUsers);
+router.patch('/users/:id/role', updateUserRole);
+router.get('/verifications', listVerifications);
+router.post('/verifications/:id/review', reviewVerification);
+router.get('/audit-logs', listAuditLogs);
 
 module.exports = router;
